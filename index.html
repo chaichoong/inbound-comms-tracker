@@ -1491,6 +1491,7 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
     function sanitizeHtml(html) {
         return html
             .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
             .replace(/\son\w+="[^"]*"/gi, '')
             .replace(/\son\w+='[^']*'/gi, '')
             .replace(/javascript:/gi, '');
