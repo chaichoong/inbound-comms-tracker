@@ -948,18 +948,17 @@
         if (!currentLabelObj || !newLabelObj) { showError('Label not found.'); return; }
 
         try {
-            // Modify labels on all messages in the thread
-            const promises = email.msgIds.map(msgId =>
-                gapi.client.gmail.users.messages.modify({
+            // Modify labels on all messages in the thread (sequentially to avoid rate limits)
+            for (const msgId of email.msgIds) {
+                await gapi.client.gmail.users.messages.modify({
                     userId: 'me',
                     id: msgId,
                     resource: {
                         addLabelIds: [newLabelObj.id],
                         removeLabelIds: [currentLabelObj.id]
                     }
-                })
-            );
-            await Promise.all(promises);
+                });
+            }
 
             showSuccess('Moved to "' + newLabelName + '"');
 
@@ -995,18 +994,17 @@
         if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '...'; }
 
         try {
-            // Add the label and remove INBOX on all messages in thread
-            const promises = email.msgIds.map(msgId =>
-                gapi.client.gmail.users.messages.modify({
+            // Add the label and remove INBOX on all messages in thread (sequentially to avoid rate limits)
+            for (const msgId of email.msgIds) {
+                await gapi.client.gmail.users.messages.modify({
                     userId: 'me',
                     id: msgId,
                     resource: {
                         addLabelIds: [labelObj.id],
                         removeLabelIds: ['INBOX']
                     }
-                })
-            );
-            await Promise.all(promises);
+                });
+            }
 
             // Track corrections if user changed the suggestion
             const suggestion = inboxSuggestions[emailIndex];
