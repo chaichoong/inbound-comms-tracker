@@ -357,11 +357,20 @@
                     <label>Message</label>
                     <textarea id="draftBody"></textarea>
                 </div>
+                <div class="modal-field" id="feedbackField">
+                    <label>Feedback / Amendments</label>
+                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                        <input type="text" id="draftFeedback" placeholder="e.g. Make it more formal, mention the invoice number..." style="flex:1;" />
+                        <button class="btn-send" id="reviseBtn" onclick="reviseDraft()" style="flex-shrink:0; padding:10px 16px;">Revise</button>
+                    </div>
+                    <p class="settings-info" id="reviseStatus"></p>
+                </div>
             </div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeDraftModal()">Cancel</button>
-            <button class="btn-send" id="sendBtn" onclick="sendDraft()" disabled>Send</button>
+            <button class="btn-send" id="sendRespondedBtn" onclick="sendDraft('responded')" disabled style="background:#22c55e;">Send &rarr; Responded</button>
+            <button class="btn-send" id="sendFollowUpBtn" onclick="sendDraft('followup')" disabled style="background:#f59e0b;">Send &rarr; Follow Up</button>
         </div>
     </div>
 </div>
@@ -1336,7 +1345,7 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
                     </div>
                     <div class="email-date">${formatDate(email.lastDate)}</div>
                     <div class="days-old ${getDaysClass(email.daysOld)}" id="days-${i}">${email.daysOld}d</div>
-                    <div class="action-col"><button class="followup-btn" onclick="event.stopPropagation(); draftFollowUp(${i})">Follow up</button></div>
+                    <div class="action-col"><button class="followup-btn" onclick="event.stopPropagation(); draftFollowUp(${i})">${currentLabel === '1: to respond' ? 'Respond' : 'Follow up'}</button></div>
                     <div class="label-change-col" onclick="event.stopPropagation();">
                         <select class="label-change-select" id="labelChg-${i}" onchange="changeLabel(${i}, this.value)">
                             <option value="">Move to...</option>
@@ -1583,8 +1592,11 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
         document.getElementById('draftModal').classList.add('active');
         document.getElementById('draftingStatus').style.display = 'block';
         document.getElementById('draftForm').style.display = 'none';
-        document.getElementById('sendBtn').disabled = true;
-        document.getElementById('draftModalTitle').textContent = 'Draft Follow Up: ' + email.subject;
+        document.getElementById('sendRespondedBtn').disabled = true;
+        document.getElementById('sendFollowUpBtn').disabled = true;
+        document.getElementById('draftFeedback').value = '';
+        document.getElementById('reviseStatus').textContent = '';
+        document.getElementById('draftModalTitle').textContent = 'Draft Response: ' + email.subject;
 
         // Populate From dropdown
         const fromSelect = document.getElementById('draftFrom');
@@ -1605,7 +1617,15 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
         const recipientName = cleanFrom(email.replyTo);
         const recipientEmail = extractEmail(email.replyTo);
 
-        const prompt = `You are drafting a polite, professional follow-up email on behalf of ${senderName}.
+        // Include past response amendments for self-learning
+        const pastAmendments = JSON.parse(localStorage.getItem('response_amendments') || '[]');
+        let amendmentContext = '';
+        if (pastAmendments.length > 0) {
+            const recent = pastAmendments.slice(-20);
+            amendmentContext = `\n\nIMPORTANT - Learn from these past feedback/amendments the user has given on previous drafts. Apply these lessons to this draft:\n${recent.map(a => `- Context: "${a.subject}" → Feedback: "${a.feedback}"`).join('\n')}`;
+        }
+
+        const prompt = `You are drafting a polite, professional response email on behalf of ${senderName}.
 
 The email thread subject is: "${email.subject}"
 The recipient is: ${recipientName} (${recipientEmail})
@@ -1613,8 +1633,9 @@ It has been ${email.daysOld} days since the last communication.
 
 Here is the recent conversation context:
 ${lastMessages}
+${amendmentContext}
 
-Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be professional but warm. Reference the original topic naturally. Do not include a subject line - just the body text. Sign off as ${senderName}.`;
+Draft a brief, professional response email. Keep it concise (3-5 sentences). Be professional but warm. Reference the original topic naturally. Do not include a subject line - just the body text. Sign off as ${senderName}.`;
 
         try {
             const response = await fetch(CLAUDE_PROXY, {
@@ -1640,7 +1661,8 @@ Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be pro
             document.getElementById('draftBody').value = draftText;
             document.getElementById('draftingStatus').style.display = 'none';
             document.getElementById('draftForm').style.display = 'block';
-            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('sendRespondedBtn').disabled = false;
+            document.getElementById('sendFollowUpBtn').disabled = false;
 
         } catch (err) {
             console.error('Claude API error:', err);
@@ -1655,12 +1677,75 @@ Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be pro
     }
 
     // ============================================================
+    // REVISE DRAFT WITH FEEDBACK
+    // ============================================================
+    async function reviseDraft() {
+        const feedback = document.getElementById('draftFeedback').value.trim();
+        if (!feedback) return;
+
+        const currentBody = document.getElementById('draftBody').value;
+        const reviseBtn = document.getElementById('reviseBtn');
+        const statusEl = document.getElementById('reviseStatus');
+
+        reviseBtn.disabled = true;
+        reviseBtn.textContent = 'Revising...';
+        statusEl.textContent = 'Claude is revising your draft...';
+
+        const senderName = localStorage.getItem('sender_name') || 'Kevin';
+
+        try {
+            const response = await fetch(CLAUDE_PROXY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-20250514',
+                    max_tokens: 500,
+                    messages: [{ role: 'user', content: `Here is a draft email I wrote on behalf of ${senderName}:\n\n${currentBody}\n\nPlease revise this draft based on the following feedback:\n${feedback}\n\nReturn ONLY the revised email body text. No subject line, no explanations.` }]
+                })
+            });
+
+            if (!response.ok) throw new Error(`API error ${response.status}`);
+
+            const data = await response.json();
+            document.getElementById('draftBody').value = data.content[0].text;
+            document.getElementById('draftFeedback').value = '';
+            statusEl.textContent = 'Draft revised successfully.';
+
+            // Store the amendment for future learning
+            storeResponseAmendment(currentDraftEmail?.subject || '', feedback);
+
+        } catch (err) {
+            console.error('Revise error:', err);
+            statusEl.textContent = 'Failed to revise: ' + err.message;
+        }
+
+        reviseBtn.disabled = false;
+        reviseBtn.textContent = 'Revise';
+    }
+
+    function storeResponseAmendment(subject, feedback) {
+        const amendments = JSON.parse(localStorage.getItem('response_amendments') || '[]');
+        amendments.push({
+            subject: subject.substring(0, 80),
+            feedback: feedback.substring(0, 200),
+            date: new Date().toISOString()
+        });
+        // Keep last 50 amendments
+        if (amendments.length > 50) amendments.splice(0, amendments.length - 50);
+        localStorage.setItem('response_amendments', JSON.stringify(amendments));
+    }
+
+    // ============================================================
     // SEND EMAIL
     // ============================================================
-    async function sendDraft() {
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = true;
-        sendBtn.textContent = 'Sending...';
+    async function sendDraft(destination) {
+        const respondedBtn = document.getElementById('sendRespondedBtn');
+        const followUpBtn = document.getElementById('sendFollowUpBtn');
+        respondedBtn.disabled = true;
+        followUpBtn.disabled = true;
+        const activeBtn = destination === 'responded' ? respondedBtn : followUpBtn;
+        const origText = activeBtn.innerHTML;
+        activeBtn.textContent = 'Sending...';
 
         const fromEmail = document.getElementById('draftFrom').value;
         const to = document.getElementById('draftTo').value;
@@ -1697,17 +1782,32 @@ Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be pro
 
             await gapi.client.gmail.users.messages.send(sendParams);
 
-            // Update the local data: set days old to 0 and update last date
+            // Move label: remove "1: to respond", add destination label
+            const destLabelName = destination === 'responded' ? '5: responded' : '2: to follow-up';
+            const fromLabelObj = allLabelsRaw.find(l => l.name === '1: to respond');
+            const destLabelObj = allLabelsRaw.find(l => l.name === destLabelName);
+
+            if (fromLabelObj && destLabelObj && currentDraftEmail?.msgIds) {
+                for (const msgId of currentDraftEmail.msgIds) {
+                    await gapi.client.gmail.users.messages.modify({
+                        userId: 'me',
+                        id: msgId,
+                        resource: {
+                            addLabelIds: [destLabelObj.id],
+                            removeLabelIds: [fromLabelObj.id]
+                        }
+                    });
+                }
+            }
+
+            // Remove from current list and re-render
             if (currentDraftIndex !== null && allEmails[currentDraftIndex]) {
-                allEmails[currentDraftIndex].daysOld = 0;
-                allEmails[currentDraftIndex].lastDate = new Date();
-                allEmails[currentDraftIndex].messageCount += 1;
+                allEmails.splice(currentDraftIndex, 1);
             }
 
             closeDraftModal();
-            showSuccess('Follow-up sent from ' + (fromEmail || 'primary account') + ' to ' + to);
+            showSuccess('Sent from ' + (fromEmail || 'primary account') + ' to ' + to + ' — moved to "' + destLabelName + '"');
 
-            // Re-render to update days old display
             if (isInboxView) {
                 renderInboxEmails(allEmails);
             } else {
@@ -1720,8 +1820,9 @@ Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be pro
             showError('Failed to send: ' + (err.result?.error?.message || err.message || 'Unknown error'));
         }
 
-        sendBtn.disabled = false;
-        sendBtn.textContent = 'Send';
+        respondedBtn.disabled = false;
+        followUpBtn.disabled = false;
+        activeBtn.innerHTML = origText;
     }
 
     // ============================================================
