@@ -81,11 +81,17 @@
             padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
             font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;
         }
+        .email-list-header.inbox-header {
+            grid-template-columns: 40px 1fr 160px 150px 160px 40px;
+        }
         .email-row { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
         .email-row:last-child { border-bottom: none; }
         .email-row-summary {
             display: grid; grid-template-columns: 40px 1fr 160px 80px 100px 120px 40px;
             padding: 14px 20px; align-items: center; cursor: pointer; user-select: none;
+        }
+        .email-row-summary.inbox-row {
+            grid-template-columns: 40px 1fr 160px 150px 160px 40px;
         }
         .email-row-summary:hover { background: #f8fafc; }
         .email-row.expanded .email-row-summary { background: #f1f5f9; }
@@ -191,11 +197,58 @@
         .attachment-name { font-weight: 500; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .attachment-size { color: #94a3b8; font-size: 11px; }
 
+        /* Suggestion Badge */
+        .suggestion-badge {
+            display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 600;
+            border-radius: 12px; background: #f1f5f9; color: #475569; border: 2px solid #e2e8f0;
+            white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .suggestion-badge.high { border-color: #22c55e; background: #f0fdf4; color: #16a34a; }
+        .suggestion-badge.medium { border-color: #f59e0b; background: #fffbeb; color: #d97706; }
+        .suggestion-badge.low { border-color: #ef4444; background: #fef2f2; color: #dc2626; }
+        .suggestion-badge.pending {
+            border-color: #e2e8f0; background: #f8fafc; color: #94a3b8;
+        }
+
+        /* Apply button */
+        .apply-btn {
+            padding: 5px 10px; font-size: 11px; font-weight: 600;
+            border: 1px solid #22c55e; background: #f0fdf4; color: #16a34a;
+            border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+        }
+        .apply-btn:hover { background: #22c55e; color: white; }
+        .apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Apply column layout */
+        .apply-col { display: flex; align-items: center; gap: 4px; }
+        .apply-col select {
+            padding: 4px 6px; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 6px;
+            background: #ffffff; color: #475569; cursor: pointer; max-width: 100px;
+        }
+
+        /* KB Status */
+        .kb-status { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+        .kb-btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+            cursor: pointer; border: 1px solid #e2e8f0; background: #ffffff; color: #475569; transition: all 0.15s;
+            margin-top: 8px; width: 100%;
+        }
+        .kb-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        .kb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Mini spinner for inline use */
+        .spinner-mini {
+            display: inline-block; width: 14px; height: 14px;
+            border: 2px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%;
+            animation: spin 0.8s linear infinite; vertical-align: middle;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .email-list-header { display: none; }
             .email-row-summary { grid-template-columns: 30px 1fr 60px 50px; gap: 4px; }
-            .email-date, .action-col, .label-change-col { display: none; }
+            .email-row-summary.inbox-row { grid-template-columns: 30px 1fr 60px 50px; gap: 4px; }
+            .email-date, .action-col, .label-change-col, .suggestion-col, .apply-col-wrap { display: none; }
             .days-old { font-size: 12px; }
             .email-body { padding: 0 12px 16px 12px; }
             .stats-bar { gap: 8px; }
@@ -239,6 +292,7 @@
     <div class="container">
         <div id="errorContainer"></div>
 
+        <!-- Label view stats -->
         <div class="stats-bar" id="statsBar">
             <div class="stat-card"><div class="label">Total</div><div class="value blue" id="statTotal">-</div></div>
             <div class="stat-card"><div class="label">Critical (30+ days)</div><div class="value red" id="statCritical">-</div></div>
@@ -246,8 +300,15 @@
             <div class="stat-card"><div class="label">Recent (&lt;14 days)</div><div class="value green" id="statRecent">-</div></div>
         </div>
 
+        <!-- Inbox view stats -->
+        <div class="stats-bar" id="inboxStatsBar" style="display:none;">
+            <div class="stat-card"><div class="label">Total Unlabelled</div><div class="value blue" id="inboxStatTotal">-</div></div>
+            <div class="stat-card"><div class="label">AI Suggested</div><div class="value amber" id="inboxStatSuggested">-</div></div>
+            <div class="stat-card"><div class="label">Applied Today</div><div class="value green" id="inboxStatApplied">-</div></div>
+        </div>
+
         <div class="email-list" id="emailList">
-            <div class="email-list-header">
+            <div class="email-list-header" id="emailListHeader">
                 <div>#</div>
                 <div>Subject / From</div>
                 <div>Last Activity</div>
@@ -315,10 +376,37 @@
                 <label>Your Name (for sign-off)</label>
                 <input type="text" id="senderName" placeholder="Kevin" />
             </div>
+            <div class="modal-field" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+                <label>Knowledge Base</label>
+                <p class="kb-status" id="kbStatus">Not yet built</p>
+                <button class="kb-btn" id="kbBuildBtn" onclick="buildKnowledgeBase()">Build KB</button>
+                <p class="settings-info">Fetches 20 recent emails from each numbered label to train AI suggestions.</p>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
             <button class="btn-send" onclick="saveSettings()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- KB Build Prompt Modal -->
+<div class="modal-overlay" id="kbPromptModal">
+    <div class="modal" style="max-width:440px;">
+        <div class="modal-header">
+            <h3>Build Knowledge Base?</h3>
+            <button class="modal-close" onclick="dismissKbPrompt()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:14px; color:#475569; line-height:1.6;">
+                To suggest labels for your inbox emails, the AI needs to learn from your existing labelled emails.
+                This will fetch 20 recent emails from each of your 7 numbered labels and store patterns locally.
+            </p>
+            <p style="font-size:13px; color:#94a3b8; margin-top:12px;">This only needs to happen once and takes about 30 seconds.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="dismissKbPrompt()">Later</button>
+            <button class="btn-send" onclick="dismissKbPrompt(); buildKnowledgeBase();">Build Now</button>
         </div>
     </div>
 </div>
@@ -336,6 +424,7 @@
     const SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.settings.basic';
     const DEFAULT_LABEL = '2: to follow-up';
     const CLAUDE_PROXY = 'https://claude-proxy.kevinbrittain.workers.dev';
+    const INBOX_VALUE = '__INBOX__';
 
     let tokenClient;
     let accessToken = null;
@@ -346,6 +435,9 @@
     let sendAsAliases = [];     // send-as email addresses
     let currentDraftEmail = null;
     let currentDraftIndex = null;
+    let isInboxView = false;
+    let inboxSuggestions = {};  // index -> { label, confidence, reason }
+    let appliedTodayCount = 0;
 
     // ============================================================
     // AUTH
@@ -395,6 +487,10 @@
         document.getElementById('mainApp').style.display = 'block';
         fetchLabels();
         fetchSendAsAliases();
+        updateKbStatusDisplay();
+        // Load applied today count from localStorage
+        const todayKey = 'applied_today_' + new Date().toISOString().slice(0, 10);
+        appliedTodayCount = parseInt(localStorage.getItem(todayKey) || '0');
     }
 
     async function fetchLabels() {
@@ -406,9 +502,11 @@
                 .sort((a, b) => a.name.localeCompare(b.name));
 
             const select = document.getElementById('labelSelect');
-            select.innerHTML = allLabels.map(l =>
+            const inboxOption = `<option value="${INBOX_VALUE}">Inbox (Unlabelled)</option>`;
+            const labelOptions = allLabels.map(l =>
                 `<option value="${escapeHtml(l.name)}"${l.name === currentLabel ? ' selected' : ''}>${escapeHtml(l.name)}</option>`
             ).join('');
+            select.innerHTML = inboxOption + labelOptions;
         } catch (err) {
             console.error('Failed to fetch labels:', err);
         }
@@ -424,7 +522,14 @@
     }
 
     function onLabelChange() {
-        currentLabel = document.getElementById('labelSelect').value;
+        const val = document.getElementById('labelSelect').value;
+        if (val === INBOX_VALUE) {
+            isInboxView = true;
+            currentLabel = INBOX_VALUE;
+        } else {
+            isInboxView = false;
+            currentLabel = val;
+        }
         loadEmails();
     }
 
@@ -433,6 +538,7 @@
     // ============================================================
     function openSettings() {
         document.getElementById('senderName').value = localStorage.getItem('sender_name') || '';
+        updateKbStatusDisplay();
         document.getElementById('settingsModal').classList.add('active');
     }
 
@@ -445,6 +551,105 @@
         closeSettings();
     }
 
+    function updateKbStatusDisplay() {
+        const kbStatus = document.getElementById('kbStatus');
+        const lastBuilt = localStorage.getItem('kb_last_built');
+        if (lastBuilt) {
+            const d = new Date(parseInt(lastBuilt));
+            kbStatus.textContent = 'Last built: ' + d.toLocaleString();
+        } else {
+            kbStatus.textContent = 'Not yet built';
+        }
+    }
+
+    // ============================================================
+    // KNOWLEDGE BASE
+    // ============================================================
+    async function buildKnowledgeBase() {
+        const btn = document.getElementById('kbBuildBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Building...'; }
+        showSuccess('Building knowledge base - fetching emails from each label...');
+
+        try {
+            // Ensure labels are loaded
+            if (allLabelsRaw.length === 0) {
+                const labelsResp = await gapi.client.gmail.users.labels.list({ userId: 'me' });
+                allLabelsRaw = labelsResp.result.labels || [];
+                allLabels = allLabelsRaw
+                    .filter(l => l.type === 'user' && /^[1-7][.:]\s/.test(l.name))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            const kb = {};
+
+            for (const label of allLabels) {
+                const patterns = [];
+                try {
+                    const listResp = await gapi.client.gmail.users.messages.list({
+                        userId: 'me', labelIds: [label.id], maxResults: 20
+                    });
+                    const messages = listResp.result.messages || [];
+
+                    // Fetch message details in batches
+                    for (let i = 0; i < messages.length; i += 10) {
+                        const batch = messages.slice(i, i + 10);
+                        const details = await Promise.all(
+                            batch.map(m =>
+                                gapi.client.gmail.users.messages.get({
+                                    userId: 'me', id: m.id, format: 'metadata',
+                                    metadataHeaders: ['From', 'Subject']
+                                }).then(r => r.result).catch(() => null)
+                            )
+                        );
+
+                        for (const msg of details) {
+                            if (!msg) continue;
+                            const getHeader = (name) => {
+                                const h = (msg.payload.headers || []).find(h => h.name.toLowerCase() === name.toLowerCase());
+                                return h ? h.value : '';
+                            };
+                            const from = getHeader('From');
+                            const subject = getHeader('Subject');
+                            const senderEmail = extractEmail(from);
+                            const senderName = cleanFrom(from);
+
+                            // Extract subject keywords (remove Re:, Fwd:, etc)
+                            const subjectClean = subject.replace(/^(Re|Fwd|Fw):\s*/gi, '').trim();
+                            const keywords = subjectClean.toLowerCase().split(/\s+/).filter(w => w.length > 2).slice(0, 8);
+
+                            patterns.push({
+                                senderEmail,
+                                senderName,
+                                subjectKeywords: keywords,
+                                snippet: (msg.snippet || '').substring(0, 100)
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Failed to fetch for label ' + label.name, err);
+                }
+
+                kb[label.name] = patterns;
+            }
+
+            localStorage.setItem('label_knowledge_base', JSON.stringify(kb));
+            localStorage.setItem('kb_last_built', Date.now().toString());
+            updateKbStatusDisplay();
+            showSuccess('Knowledge base built successfully with patterns from ' + allLabels.length + ' labels.');
+
+        } catch (err) {
+            console.error('KB build error:', err);
+            showError('Failed to build knowledge base: ' + (err.message || 'Unknown error'));
+        }
+
+        if (btn) { btn.disabled = false; btn.textContent = 'Build KB'; }
+    }
+
+    function dismissKbPrompt() {
+        document.getElementById('kbPromptModal').classList.remove('active');
+        localStorage.setItem('kb_prompt_dismissed', 'true');
+    }
+
     // ============================================================
     // LOAD EMAILS
     // ============================================================
@@ -454,6 +659,20 @@
         btn.textContent = 'Loading...';
         document.getElementById('emailListBody').innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading emails...</div></div>';
         clearError();
+
+        if (isInboxView) {
+            await loadInboxEmails();
+        } else {
+            await loadLabelEmails();
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+    }
+
+    async function loadLabelEmails() {
+        // Switch to label view UI
+        switchToLabelView();
 
         try {
             // Refresh labels in case they changed
@@ -465,7 +684,7 @@
             const targetLabel = allLabelsRaw.find(l => l.name.toLowerCase() === currentLabel.toLowerCase());
             if (!targetLabel) {
                 document.getElementById('emailListBody').innerHTML = '<div class="empty-state"><p>No label called "' + escapeHtml(currentLabel) + '" found.</p></div>';
-                btn.disabled = false; btn.textContent = 'Refresh'; return;
+                return;
             }
 
             let allMessageIds = [];
@@ -480,7 +699,7 @@
 
             if (allMessageIds.length === 0) {
                 document.getElementById('emailListBody').innerHTML = '<div class="empty-state"><p>No emails found with "' + escapeHtml(currentLabel) + '".</p></div>';
-                updateStats([]); btn.disabled = false; btn.textContent = 'Refresh'; return;
+                updateStats([]); return;
             }
 
             const threadIds = [...new Set(allMessageIds.map(m => m.threadId))];
@@ -494,65 +713,7 @@
                 threads.push(...(await Promise.all(promises)).filter(Boolean));
             }
 
-            allEmails = threads.map(thread => {
-                const messages = thread.messages || [];
-                const firstMsg = messages[0];
-                const lastMsg = messages[messages.length - 1];
-
-                const getHeader = (msg, name) => {
-                    const h = (msg.payload.headers || []).find(h => h.name.toLowerCase() === name.toLowerCase());
-                    return h ? h.value : '';
-                };
-
-                const subject = getHeader(firstMsg, 'Subject') || '(No subject)';
-                const from = getHeader(firstMsg, 'From');
-                const lastDate = new Date(parseInt(lastMsg.internalDate));
-                const firstDate = new Date(parseInt(firstMsg.internalDate));
-
-                const threadMessages = messages.map(msg => {
-                    const extracted = extractBody(msg.payload);
-                    return {
-                        id: msg.id,
-                        from: getHeader(msg, 'From'),
-                        to: getHeader(msg, 'To'),
-                        date: new Date(parseInt(msg.internalDate)),
-                        body: extracted.text,
-                        isHtml: extracted.isHtml,
-                        attachments: extracted.attachments,
-                        inlineImages: extracted.inlineImages,
-                        snippet: msg.snippet
-                    };
-                });
-
-                const now = new Date();
-                const daysOld = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
-
-                let replyTo = from;
-                for (let m of messages) {
-                    const mFrom = getHeader(m, 'From');
-                    if (!mFrom.toLowerCase().includes('kevin')) replyTo = mFrom;
-                }
-
-                // Collect all message IDs for label operations
-                const msgIds = messages.map(m => m.id);
-
-                return {
-                    threadId: thread.id,
-                    messageId: getHeader(lastMsg, 'Message-Id'),
-                    msgIds,
-                    subject,
-                    from: cleanFrom(from),
-                    fromFull: from,
-                    replyTo,
-                    lastDate,
-                    firstDate,
-                    daysOld,
-                    messageCount: messages.length,
-                    messages: threadMessages,
-                    snippet: firstMsg.snippet
-                };
-            });
-
+            allEmails = threads.map(thread => parseThread(thread));
             allEmails.sort((a, b) => a.lastDate - b.lastDate);
             renderEmails(allEmails);
             updateStats(allEmails);
@@ -568,9 +729,208 @@
                 showError('Failed to load emails: ' + (err.result?.error?.message || err.message || 'Unknown error'));
             }
         }
+    }
 
-        btn.disabled = false;
-        btn.textContent = 'Refresh';
+    async function loadInboxEmails() {
+        // Switch to inbox view UI
+        switchToInboxView();
+        inboxSuggestions = {};
+
+        try {
+            if (allLabelsRaw.length === 0) {
+                const labelsResp = await gapi.client.gmail.users.labels.list({ userId: 'me' });
+                allLabelsRaw = labelsResp.result.labels || [];
+                allLabels = allLabelsRaw
+                    .filter(l => l.type === 'user' && /^[1-7][.:]\s/.test(l.name))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            // Get numbered label IDs for filtering
+            const numberedLabelIds = new Set(allLabels.map(l => l.id));
+
+            // Fetch recent INBOX messages
+            let inboxMessages = [];
+            let pageToken = null;
+            let fetched = 0;
+            do {
+                const params = { userId: 'me', labelIds: ['INBOX'], maxResults: 100 };
+                if (pageToken) params.pageToken = pageToken;
+                const listResp = await gapi.client.gmail.users.messages.list(params);
+                const msgs = listResp.result.messages || [];
+                inboxMessages = inboxMessages.concat(msgs);
+                pageToken = listResp.result.nextPageToken;
+                fetched += msgs.length;
+            } while (pageToken && fetched < 200); // fetch up to 200, we'll filter down
+
+            if (inboxMessages.length === 0) {
+                document.getElementById('emailListBody').innerHTML = '<div class="empty-state"><p>No emails found in inbox.</p></div>';
+                updateInboxStats(0, 0);
+                return;
+            }
+
+            // Fetch message metadata to check labels - batch by 20
+            const filteredMessages = [];
+            for (let i = 0; i < inboxMessages.length && filteredMessages.length < 50; i += 20) {
+                const batch = inboxMessages.slice(i, Math.min(i + 20, inboxMessages.length));
+                const details = await Promise.all(
+                    batch.map(m =>
+                        gapi.client.gmail.users.messages.get({
+                            userId: 'me', id: m.id, format: 'metadata',
+                            metadataHeaders: ['From', 'Subject', 'Date']
+                        }).then(r => r.result).catch(() => null)
+                    )
+                );
+
+                for (const msg of details) {
+                    if (!msg) continue;
+                    const msgLabelIds = msg.labelIds || [];
+                    const hasNumberedLabel = msgLabelIds.some(lid => numberedLabelIds.has(lid));
+                    if (!hasNumberedLabel) {
+                        filteredMessages.push(msg);
+                        if (filteredMessages.length >= 50) break;
+                    }
+                }
+            }
+
+            if (filteredMessages.length === 0) {
+                document.getElementById('emailListBody').innerHTML = '<div class="empty-state"><p>All inbox emails already have labels. Nice work!</p></div>';
+                updateInboxStats(0, 0);
+                return;
+            }
+
+            // Now fetch full thread data for these messages
+            const threadIds = [...new Set(filteredMessages.map(m => m.threadId))];
+            const threads = [];
+            for (let i = 0; i < threadIds.length; i += 20) {
+                const batch = threadIds.slice(i, i + 20);
+                const promises = batch.map(tid =>
+                    gapi.client.gmail.users.threads.get({ userId: 'me', id: tid, format: 'full' })
+                        .then(r => r.result).catch(() => null)
+                );
+                threads.push(...(await Promise.all(promises)).filter(Boolean));
+            }
+
+            allEmails = threads.map(thread => parseThread(thread));
+            allEmails.sort((a, b) => b.lastDate - a.lastDate); // newest first for inbox
+            renderInboxEmails(allEmails);
+            updateInboxStats(allEmails.length, 0);
+            document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
+
+            // Check if KB exists, if not prompt to build
+            const kbData = localStorage.getItem('label_knowledge_base');
+            const kbPromptDismissed = localStorage.getItem('kb_prompt_dismissed');
+            if (!kbData && !kbPromptDismissed) {
+                document.getElementById('kbPromptModal').classList.add('active');
+            } else if (kbData) {
+                // Auto-request AI suggestions
+                requestAISuggestions(allEmails);
+            }
+
+        } catch (err) {
+            console.error(err);
+            if (err.status === 401) {
+                sessionStorage.removeItem('gmail_token');
+                showError('Session expired. Please sign in again.');
+                handleSignout();
+            } else {
+                showError('Failed to load inbox: ' + (err.result?.error?.message || err.message || 'Unknown error'));
+            }
+        }
+    }
+
+    function parseThread(thread) {
+        const messages = thread.messages || [];
+        const firstMsg = messages[0];
+        const lastMsg = messages[messages.length - 1];
+
+        const getHeader = (msg, name) => {
+            const h = (msg.payload.headers || []).find(h => h.name.toLowerCase() === name.toLowerCase());
+            return h ? h.value : '';
+        };
+
+        const subject = getHeader(firstMsg, 'Subject') || '(No subject)';
+        const from = getHeader(firstMsg, 'From');
+        const lastDate = new Date(parseInt(lastMsg.internalDate));
+        const firstDate = new Date(parseInt(firstMsg.internalDate));
+
+        const threadMessages = messages.map(msg => {
+            const extracted = extractBody(msg.payload);
+            return {
+                id: msg.id,
+                from: getHeader(msg, 'From'),
+                to: getHeader(msg, 'To'),
+                date: new Date(parseInt(msg.internalDate)),
+                body: extracted.text,
+                isHtml: extracted.isHtml,
+                attachments: extracted.attachments,
+                inlineImages: extracted.inlineImages,
+                snippet: msg.snippet
+            };
+        });
+
+        const now = new Date();
+        const daysOld = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+
+        let replyTo = from;
+        for (let m of messages) {
+            const mFrom = getHeader(m, 'From');
+            if (!mFrom.toLowerCase().includes('kevin')) replyTo = mFrom;
+        }
+
+        const msgIds = messages.map(m => m.id);
+
+        return {
+            threadId: thread.id,
+            messageId: getHeader(lastMsg, 'Message-Id'),
+            msgIds,
+            subject,
+            from: cleanFrom(from),
+            fromFull: from,
+            fromEmail: extractEmail(from),
+            replyTo,
+            lastDate,
+            firstDate,
+            daysOld,
+            messageCount: messages.length,
+            messages: threadMessages,
+            snippet: firstMsg.snippet
+        };
+    }
+
+    // ============================================================
+    // VIEW SWITCHING
+    // ============================================================
+    function switchToLabelView() {
+        isInboxView = false;
+        document.getElementById('statsBar').style.display = 'flex';
+        document.getElementById('inboxStatsBar').style.display = 'none';
+        const header = document.getElementById('emailListHeader');
+        header.className = 'email-list-header';
+        header.innerHTML = `
+            <div>#</div>
+            <div>Subject / From</div>
+            <div>Last Activity</div>
+            <div>Days Old</div>
+            <div>Action</div>
+            <div>Move Label</div>
+            <div></div>
+        `;
+    }
+
+    function switchToInboxView() {
+        isInboxView = true;
+        document.getElementById('statsBar').style.display = 'none';
+        document.getElementById('inboxStatsBar').style.display = 'flex';
+        const header = document.getElementById('emailListHeader');
+        header.className = 'email-list-header inbox-header';
+        header.innerHTML = `
+            <div>#</div>
+            <div>Subject / From</div>
+            <div>Date</div>
+            <div>AI Suggestion</div>
+            <div>Apply</div>
+            <div></div>
+        `;
     }
 
     // ============================================================
@@ -612,6 +972,237 @@
             // Reset the dropdown
             const sel = document.getElementById('labelChg-' + emailIndex);
             if (sel) sel.value = '';
+        }
+    }
+
+    // ============================================================
+    // APPLY LABEL FROM INBOX
+    // ============================================================
+    async function applyInboxLabel(emailIndex) {
+        const email = allEmails[emailIndex];
+        if (!email) return;
+
+        const selectEl = document.getElementById('inboxApply-' + emailIndex);
+        const labelName = selectEl ? selectEl.value : '';
+        if (!labelName) { showError('Please select a label to apply.'); return; }
+
+        const labelObj = allLabelsRaw.find(l => l.name === labelName);
+        if (!labelObj) { showError('Label not found.'); return; }
+
+        const applyBtn = document.getElementById('applyBtn-' + emailIndex);
+        if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '...'; }
+
+        try {
+            // Add the label and remove INBOX on all messages in thread
+            const promises = email.msgIds.map(msgId =>
+                gapi.client.gmail.users.messages.modify({
+                    userId: 'me',
+                    id: msgId,
+                    resource: {
+                        addLabelIds: [labelObj.id],
+                        removeLabelIds: ['INBOX']
+                    }
+                })
+            );
+            await Promise.all(promises);
+
+            // Track corrections if user changed the suggestion
+            const suggestion = inboxSuggestions[emailIndex];
+            if (suggestion && suggestion.label !== labelName) {
+                storeCorrection(email, suggestion.label, labelName);
+            }
+
+            showSuccess('Applied "' + labelName + '" and removed from inbox.');
+
+            // Update applied today count
+            appliedTodayCount++;
+            const todayKey = 'applied_today_' + new Date().toISOString().slice(0, 10);
+            localStorage.setItem(todayKey, appliedTodayCount.toString());
+
+            // Remove from list and re-render
+            // Also shift suggestions for indexes after this one
+            const newSuggestions = {};
+            for (const key in inboxSuggestions) {
+                const k = parseInt(key);
+                if (k < emailIndex) newSuggestions[k] = inboxSuggestions[k];
+                else if (k > emailIndex) newSuggestions[k - 1] = inboxSuggestions[k];
+            }
+            inboxSuggestions = newSuggestions;
+
+            allEmails.splice(emailIndex, 1);
+            renderInboxEmails(allEmails);
+            const suggestedCount = Object.keys(inboxSuggestions).length;
+            updateInboxStats(allEmails.length, suggestedCount);
+
+        } catch (err) {
+            console.error('Apply label error:', err);
+            showError('Failed to apply label: ' + (err.result?.error?.message || err.message || 'Unknown error'));
+            if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; }
+        }
+    }
+
+    // ============================================================
+    // CORRECTIONS / LEARNING
+    // ============================================================
+    function storeCorrection(email, suggestedLabel, correctedLabel) {
+        let corrections = [];
+        try { corrections = JSON.parse(localStorage.getItem('label_corrections') || '[]'); } catch {}
+        corrections.push({
+            sender: email.fromEmail,
+            subject: email.subject,
+            suggestedLabel,
+            correctedLabel,
+            date: new Date().toISOString()
+        });
+        // Keep last 100 corrections
+        if (corrections.length > 100) corrections = corrections.slice(-100);
+        localStorage.setItem('label_corrections', JSON.stringify(corrections));
+    }
+
+    // ============================================================
+    // AI SUGGESTIONS
+    // ============================================================
+    async function requestAISuggestions(emails) {
+        if (emails.length === 0) return;
+
+        const kb = JSON.parse(localStorage.getItem('label_knowledge_base') || '{}');
+        if (Object.keys(kb).length === 0) return;
+
+        let corrections = [];
+        try { corrections = JSON.parse(localStorage.getItem('label_corrections') || '[]'); } catch {}
+        const recentCorrections = corrections.slice(-20);
+
+        // Build KB summary for prompt
+        let kbSummary = 'KNOWLEDGE BASE - Patterns for each label:\n\n';
+        for (const [labelName, patterns] of Object.entries(kb)) {
+            kbSummary += `Label "${labelName}":\n`;
+            const senders = [...new Set(patterns.map(p => p.senderEmail))].slice(0, 10);
+            const keywords = [...new Set(patterns.flatMap(p => p.subjectKeywords))].slice(0, 15);
+            kbSummary += `  Typical senders: ${senders.join(', ')}\n`;
+            kbSummary += `  Subject keywords: ${keywords.join(', ')}\n`;
+            kbSummary += `  Example snippets: ${patterns.slice(0, 3).map(p => p.snippet).join(' | ')}\n\n`;
+        }
+
+        let correctionText = '';
+        if (recentCorrections.length > 0) {
+            correctionText = '\nRECENT CORRECTIONS (learn from these - the user changed the AI suggestion):\n';
+            for (const c of recentCorrections) {
+                correctionText += `- Sender: ${c.sender}, Subject: "${c.subject}" -> AI said "${c.suggestedLabel}" but user chose "${c.correctedLabel}"\n`;
+            }
+            correctionText += '\n';
+        }
+
+        // Process in batches of 5
+        for (let i = 0; i < emails.length; i += 5) {
+            const batch = emails.slice(i, i + 5);
+            const batchIndices = batch.map((_, j) => i + j);
+
+            // Show spinners for this batch
+            for (const idx of batchIndices) {
+                const badgeEl = document.getElementById('suggBadge-' + idx);
+                if (badgeEl) badgeEl.innerHTML = '<span class="spinner-mini"></span>';
+            }
+
+            const emailDescriptions = batch.map((email, j) => {
+                const plainSnippet = email.messages.length > 0
+                    ? getPlainText(email.messages[0]).substring(0, 300)
+                    : (email.snippet || '');
+                return `Email ${i + j}:
+  From: ${email.fromFull}
+  Subject: ${email.subject}
+  Snippet: ${plainSnippet}`;
+            }).join('\n\n');
+
+            const labelList = allLabels.map(l => `"${l.name}"`).join(', ');
+
+            const prompt = `You are an email classification assistant. Based on the knowledge base patterns below, suggest the most appropriate label for each email.
+
+Available labels: ${labelList}
+
+${kbSummary}
+${correctionText}
+EMAILS TO CLASSIFY:
+${emailDescriptions}
+
+Respond with ONLY a JSON array. Each element must have: "index" (the email number), "label" (one of the available labels exactly as written), "confidence" ("high", "medium", or "low"), and "reason" (brief explanation, under 15 words).
+
+Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "Invoice from known supplier"}]`;
+
+            try {
+                const response = await fetch(CLAUDE_PROXY, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'claude-sonnet-4-20250514',
+                        max_tokens: 1000,
+                        messages: [{ role: 'user', content: prompt }]
+                    })
+                });
+
+                if (!response.ok) {
+                    console.error('AI suggestion API error:', response.status);
+                    for (const idx of batchIndices) {
+                        const badgeEl = document.getElementById('suggBadge-' + idx);
+                        if (badgeEl) { badgeEl.textContent = 'Error'; badgeEl.className = 'suggestion-badge low'; }
+                    }
+                    continue;
+                }
+
+                const data = await response.json();
+                const text = data.content[0].text;
+
+                // Parse JSON from response (handle possible markdown wrapping)
+                let suggestions;
+                try {
+                    const jsonMatch = text.match(/\[[\s\S]*\]/);
+                    suggestions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+                } catch (parseErr) {
+                    console.error('Failed to parse AI response:', parseErr, text);
+                    suggestions = [];
+                }
+
+                for (const suggestion of suggestions) {
+                    const idx = suggestion.index;
+                    if (idx >= 0 && idx < emails.length) {
+                        inboxSuggestions[idx] = {
+                            label: suggestion.label,
+                            confidence: suggestion.confidence || 'medium',
+                            reason: suggestion.reason || ''
+                        };
+
+                        // Update badge
+                        const badgeEl = document.getElementById('suggBadge-' + idx);
+                        if (badgeEl) {
+                            badgeEl.textContent = suggestion.label;
+                            badgeEl.className = 'suggestion-badge ' + (suggestion.confidence || 'medium');
+                            badgeEl.title = suggestion.reason || '';
+                        }
+
+                        // Update dropdown
+                        const selectEl = document.getElementById('inboxApply-' + idx);
+                        if (selectEl) {
+                            // Find the matching option
+                            for (let o = 0; o < selectEl.options.length; o++) {
+                                if (selectEl.options[o].value === suggestion.label) {
+                                    selectEl.selectedIndex = o;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Update stats
+                const suggestedCount = Object.keys(inboxSuggestions).length;
+                updateInboxStats(allEmails.length, suggestedCount);
+
+            } catch (err) {
+                console.error('AI suggestion error:', err);
+                for (const idx of batchIndices) {
+                    const badgeEl = document.getElementById('suggBadge-' + idx);
+                    if (badgeEl) { badgeEl.textContent = 'Error'; badgeEl.className = 'suggestion-badge low'; }
+                }
+            }
         }
     }
 
@@ -711,7 +1302,7 @@
     }
 
     // ============================================================
-    // RENDER
+    // RENDER - LABEL VIEW
     // ============================================================
     function renderEmails(emails) {
         const container = document.getElementById('emailListBody');
@@ -762,6 +1353,69 @@
         document.getElementById('emailCount').textContent = emails.length;
     }
 
+    // ============================================================
+    // RENDER - INBOX VIEW
+    // ============================================================
+    function renderInboxEmails(emails) {
+        const container = document.getElementById('emailListBody');
+
+        if (emails.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No unlabelled emails found.</p></div>';
+            document.getElementById('emailCount').textContent = '0';
+            return;
+        }
+
+        const labelOptions = allLabels
+            .map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`)
+            .join('');
+
+        container.innerHTML = emails.map((email, i) => {
+            const suggestion = inboxSuggestions[i];
+            const badgeText = suggestion ? suggestion.label : 'Pending...';
+            const badgeClass = suggestion ? suggestion.confidence : 'pending';
+            const badgeTitle = suggestion ? (suggestion.reason || '') : 'Waiting for AI suggestion';
+
+            return `
+            <div class="email-row" id="row-${i}">
+                <div class="email-row-summary inbox-row" onclick="toggleRow(${i}); return false;">
+                    <div class="row-number">${i + 1}</div>
+                    <div class="email-subject-col">
+                        <div class="email-subject">${hasRealAttachments(email) ? '<span class="paperclip" title="Has attachments">&#128206;</span> ' : ''}${escapeHtml(email.subject)}</div>
+                        <div class="email-from">${escapeHtml(email.from)}${email.messageCount > 1 ? ' &middot; ' + email.messageCount + ' messages' : ''}</div>
+                    </div>
+                    <div class="email-date">${formatDate(email.lastDate)}</div>
+                    <div class="suggestion-col" onclick="event.stopPropagation();">
+                        <span class="suggestion-badge ${badgeClass}" id="suggBadge-${i}" title="${escapeHtml(badgeTitle)}">${escapeHtml(badgeText)}</span>
+                    </div>
+                    <div class="apply-col-wrap" onclick="event.stopPropagation();">
+                        <div class="apply-col">
+                            <select class="label-change-select" id="inboxApply-${i}">
+                                <option value="">Select...</option>
+                                ${labelOptions}
+                            </select>
+                            <button class="apply-btn" id="applyBtn-${i}" onclick="applyInboxLabel(${i})">Apply</button>
+                        </div>
+                    </div>
+                    <div class="expand-icon">&#9662;</div>
+                </div>
+                <div class="email-body">
+                    <div class="email-meta">
+                        <div><strong>From:</strong> ${escapeHtml(email.fromFull)}</div>
+                        <div><strong>Date:</strong> ${formatDate(email.lastDate)}</div>
+                        <div><strong>Messages:</strong> ${email.messageCount}</div>
+                        ${suggestion ? `<div><strong>AI Reason:</strong> ${escapeHtml(suggestion.reason)}</div>` : ''}
+                    </div>
+                    ${email.messages.length > 1 ? renderThread(email.messages) : renderSingleMessage(email.messages[0])}
+                </div>
+            </div>`;
+        }).join('');
+
+        document.getElementById('emailCount').textContent = emails.length;
+    }
+
+    // ============================================================
+    // SHARED RENDER HELPERS
+    // ============================================================
     function renderSingleMessage(msg) {
         const contentId = 'msg-content-' + msg.id;
         const content = msg.isHtml
@@ -811,6 +1465,12 @@
         document.getElementById('statCritical').textContent = emails.filter(e => e.daysOld >= 30).length;
         document.getElementById('statWarning').textContent = emails.filter(e => e.daysOld >= 14 && e.daysOld < 30).length;
         document.getElementById('statRecent').textContent = emails.filter(e => e.daysOld < 14).length;
+    }
+
+    function updateInboxStats(total, suggested) {
+        document.getElementById('inboxStatTotal').textContent = total;
+        document.getElementById('inboxStatSuggested').textContent = suggested;
+        document.getElementById('inboxStatApplied').textContent = appliedTodayCount;
     }
 
     function escapeHtml(str) {
@@ -1040,8 +1700,12 @@ Draft a brief, friendly follow-up email. Keep it concise (3-5 sentences). Be pro
             showSuccess('Follow-up sent from ' + (fromEmail || 'primary account') + ' to ' + to);
 
             // Re-render to update days old display
-            renderEmails(allEmails);
-            updateStats(allEmails);
+            if (isInboxView) {
+                renderInboxEmails(allEmails);
+            } else {
+                renderEmails(allEmails);
+                updateStats(allEmails);
+            }
 
         } catch (err) {
             console.error('Send error:', err);
