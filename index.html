@@ -92,6 +92,7 @@
         .row-number { font-size: 12px; color: #94a3b8; font-weight: 500; }
         .email-subject-col { min-width: 0; }
         .email-subject { font-size: 14px; font-weight: 500; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .paperclip { font-size: 13px; vertical-align: middle; }
         .email-from { font-size: 12px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .email-date { font-size: 13px; color: #475569; }
         .days-old { font-size: 13px; font-weight: 600; text-align: center; }
@@ -694,6 +695,14 @@
         return 'ok';
     }
 
+    function isRealAttachment(a) {
+        return !a.mimeType.startsWith('image/');
+    }
+
+    function hasRealAttachments(email) {
+        return email.messages.some(m => m.attachments && m.attachments.some(isRealAttachment));
+    }
+
     function getPlainText(msg) {
         if (!msg.isHtml) return msg.body;
         const div = document.createElement('div');
@@ -724,7 +733,7 @@
                 <div class="email-row-summary" onclick="toggleRow(${i}); return false;">
                     <div class="row-number">${i + 1}</div>
                     <div class="email-subject-col">
-                        <div class="email-subject">${escapeHtml(email.subject)}</div>
+                        <div class="email-subject">${hasRealAttachments(email) ? '<span class="paperclip" title="Has attachments">&#128206;</span> ' : ''}${escapeHtml(email.subject)}</div>
                         <div class="email-from">${escapeHtml(email.from)}${email.messageCount > 1 ? ' &middot; ' + email.messageCount + ' messages' : ''}</div>
                     </div>
                     <div class="email-date">${formatDate(email.lastDate)}</div>
@@ -877,10 +886,11 @@
     }
 
     function renderAttachments(msgId, attachments) {
-        if (!attachments || attachments.length === 0) return '';
+        const real = (attachments || []).filter(isRealAttachment);
+        if (real.length === 0) return '';
         return `<div class="attachment-list">
             <div class="attachment-label">Attachments:</div>
-            ${attachments.map(a => `
+            ${real.map(a => `
                 <a class="attachment-item" href="#" onclick="event.preventDefault(); downloadAttachment('${msgId}', '${a.attachmentId}', '${escapeHtml(a.filename)}', '${a.mimeType}')">
                     <span class="attachment-icon">&#128206;</span>
                     <span class="attachment-name">${escapeHtml(a.filename)}</span>
