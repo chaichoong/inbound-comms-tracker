@@ -1129,21 +1129,28 @@ Respond with ONLY a JSON array. Each element must have: "index" (the email numbe
 Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "Invoice from known supplier"}]`;
 
             try {
-                const response = await fetch(CLAUDE_PROXY, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: 'claude-sonnet-4-20250514',
-                        max_tokens: 1000,
-                        messages: [{ role: 'user', content: prompt }]
-                    })
-                });
+                // Retry logic with backoff for overloaded API
+                let response;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    response = await fetch(CLAUDE_PROXY, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: 'claude-haiku-4-5-20251001',
+                            max_tokens: 1000,
+                            messages: [{ role: 'user', content: prompt }]
+                        })
+                    });
+                    if (response.status !== 529) break;
+                    // Wait before retry: 2s, 5s, 10s
+                    await new Promise(r => setTimeout(r, (attempt + 1) * 2500));
+                }
 
                 if (!response.ok) {
                     console.error('AI suggestion API error:', response.status);
                     for (const idx of batchIndices) {
                         const badgeEl = document.getElementById('suggBadge-' + idx);
-                        if (badgeEl) { badgeEl.textContent = 'Error'; badgeEl.className = 'suggestion-badge low'; }
+                        if (badgeEl) { badgeEl.textContent = 'Retry later'; badgeEl.className = 'suggestion-badge low'; }
                     }
                     continue;
                 }
