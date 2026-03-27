@@ -508,6 +508,9 @@
         appliedTodayCount = parseInt(localStorage.getItem(todayKey) || '0');
     }
 
+    // Labels that should show a count in the dropdown
+    const LABELS_WITH_COUNTS = ['1', '2', '3', '8'];
+
     async function fetchLabels() {
         try {
             const labelsResp = await gapi.client.gmail.users.labels.list({ userId: 'me' });
@@ -516,11 +519,27 @@
                 .filter(l => l.type === 'user' && /^[1-9][.:]\s/.test(l.name))
                 .sort((a, b) => a.name.localeCompare(b.name));
 
+            // Fetch counts for selected labels (1, 2, 3, 8)
+            const labelCounts = {};
+            const countPromises = allLabels
+                .filter(l => LABELS_WITH_COUNTS.includes(l.name.charAt(0)))
+                .map(async (l) => {
+                    try {
+                        const detail = await gapi.client.gmail.users.labels.get({ userId: 'me', id: l.id });
+                        labelCounts[l.name] = detail.result.threadsTotal || 0;
+                    } catch (e) {
+                        labelCounts[l.name] = null;
+                    }
+                });
+            await Promise.all(countPromises);
+
             const select = document.getElementById('labelSelect');
             const inboxOption = `<option value="${INBOX_VALUE}"${currentLabel === INBOX_VALUE ? ' selected' : ''}>Inbox (Unlabelled)</option>`;
-            const labelOptions = allLabels.map(l =>
-                `<option value="${escapeHtml(l.name)}"${l.name === currentLabel ? ' selected' : ''}>${escapeHtml(l.name)}</option>`
-            ).join('');
+            const labelOptions = allLabels.map(l => {
+                const count = labelCounts[l.name];
+                const countText = count !== undefined && count !== null ? ` (${count})` : '';
+                return `<option value="${escapeHtml(l.name)}"${l.name === currentLabel ? ' selected' : ''}>${escapeHtml(l.name)}${countText}</option>`;
+            }).join('');
             select.innerHTML = inboxOption + labelOptions;
         } catch (err) {
             console.error('Failed to fetch labels:', err);
@@ -951,21 +970,27 @@
     // ============================================================
     // CHANGE LABEL
     // ============================================================
+    let labelChangeInProgress = false;
+
     async function changeLabel(emailIndex, newLabelName) {
+        if (labelChangeInProgress) { showError('Please wait, a label change is already in progress.'); return; }
+        labelChangeInProgress = true;
+
         const email = allEmails[emailIndex];
-        if (!email) return;
+        if (!email) { labelChangeInProgress = false; return; }
 
         // Find current label ID and new label ID
         const currentLabelObj = allLabelsRaw.find(l => l.name.toLowerCase() === currentLabel.toLowerCase());
         const newLabelObj = allLabelsRaw.find(l => l.name === newLabelName);
-        if (!currentLabelObj || !newLabelObj) { showError('Label not found.'); return; }
+        if (!currentLabelObj || !newLabelObj) { showError('Label not found.'); labelChangeInProgress = false; return; }
 
         try {
-            // Modify labels on all messages in the thread (sequentially to avoid rate limits)
-            for (const msgId of email.msgIds) {
+            // Modify labels on all messages in the thread (sequentially with delay to avoid rate limits)
+            for (let i = 0; i < email.msgIds.length; i++) {
+                if (i > 0) await new Promise(r => setTimeout(r, 300));
                 await gapi.client.gmail.users.messages.modify({
                     userId: 'me',
-                    id: msgId,
+                    id: email.msgIds[i],
                     resource: {
                         addLabelIds: [newLabelObj.id],
                         removeLabelIds: [currentLabelObj.id]
@@ -986,6 +1011,8 @@
             // Reset the dropdown
             const sel = document.getElementById('labelChg-' + emailIndex);
             if (sel) sel.value = '';
+        } finally {
+            labelChangeInProgress = false;
         }
     }
 
