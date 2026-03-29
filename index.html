@@ -1034,8 +1034,12 @@
         return currentLabel.toLowerCase().includes('follow') || currentLabel.startsWith('2');
     }
 
+    function isToRespondView() {
+        return currentLabel.toLowerCase().includes('to respond') || currentLabel.startsWith('1');
+    }
+
     function useTighterThresholds() {
-        return isToPayView() || isFollowUpView();
+        return isToPayView() || isFollowUpView() || isToRespondView();
     }
 
     function switchToLabelView() {
@@ -1873,8 +1877,8 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
         accEl.textContent = accuracy.pct;
         // Colour based on accuracy
         if (accuracy.total === 0) { accEl.style.color = '#94a3b8'; }
-        else if (parseInt(accuracy.pct) >= 80) { accEl.style.color = '#22c55e'; }
-        else if (parseInt(accuracy.pct) >= 60) { accEl.style.color = '#f59e0b'; }
+        else if (parseInt(accuracy.pct) >= 90) { accEl.style.color = '#22c55e'; }
+        else if (parseInt(accuracy.pct) >= 65) { accEl.style.color = '#f59e0b'; }
         else { accEl.style.color = '#ef4444'; }
         document.getElementById('inboxStatAccuracyDetail').textContent = accuracy.total > 0 ? `${accuracy.correct} of ${accuracy.total} correct` : '';
     }
