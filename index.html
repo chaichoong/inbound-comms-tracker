@@ -546,7 +546,7 @@
         </div>
 
         <div class="search-bar" id="searchBar" style="display:none;">
-            <input type="text" id="searchInput" placeholder="Search emails by subject, sender, or content..." oninput="handleSearchInput()" />
+            <input type="text" id="searchInput" placeholder="Search by subject, sender, snippet, or email body..." oninput="handleSearchInput()" />
             <button class="search-clear" id="searchClear" onclick="clearSearch()">&times;</button>
             <div class="search-info" id="searchInfo" style="display:none;"></div>
         </div>
@@ -3256,7 +3256,22 @@ Do not include a subject line - just the body text. Sign off as ${senderName}.`;
             const from = (email.from || '').toLowerCase();
             const fromFull = (email.fromFull || '').toLowerCase();
             const snippet = (email.snippet || '').toLowerCase();
-            return subject.includes(q) || from.includes(q) || fromFull.includes(q) || snippet.includes(q);
+            if (subject.includes(q) || from.includes(q) || fromFull.includes(q) || snippet.includes(q)) return true;
+            // Search email body content
+            if (email.messages && email.messages.length > 0) {
+                for (const msg of email.messages) {
+                    if (msg.body) {
+                        let bodyText = msg.body;
+                        if (msg.isHtml) {
+                            const div = document.createElement('div');
+                            div.innerHTML = bodyText;
+                            bodyText = div.textContent || div.innerText || '';
+                        }
+                        if (bodyText.toLowerCase().includes(q)) return true;
+                    }
+                }
+            }
+            return false;
         });
     }
 
