@@ -83,7 +83,7 @@
             align-items: center;
         }
         .email-list-header.inbox-header {
-            grid-template-columns: 40px 1fr 160px 120px 220px 40px;
+            grid-template-columns: 40px 1fr 120px 120px 120px 60px 40px;
         }
         .email-row { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
         .email-row:last-child { border-bottom: none; }
@@ -92,7 +92,7 @@
             padding: 14px 20px; align-items: center; cursor: pointer; user-select: none;
         }
         .email-row-summary.inbox-row {
-            grid-template-columns: 40px 1fr 160px 120px 220px 40px;
+            grid-template-columns: 40px 1fr 120px 120px 120px 60px 40px;
         }
         .email-row-summary:hover { background: #f8fafc; }
         .email-row.expanded .email-row-summary { background: #f1f5f9; }
@@ -970,7 +970,8 @@
             <div>Subject / From</div>
             <div>Date</div>
             <div>AI Suggestion</div>
-            <div style="display:flex; align-items:center; justify-content:space-between;">Apply <button class="apply-btn" onclick="applyAllInboxLabels()" id="applyAllBtn" title="Apply all selected labels at once">Apply All</button></div>
+            <div>Apply</div>
+            <div><button class="apply-btn" onclick="applyAllInboxLabels()" id="applyAllBtn" title="Apply all selected labels at once" style="white-space:nowrap;">Apply All</button></div>
             <div></div>
         `;
     }
@@ -1549,14 +1550,14 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
                     <div class="suggestion-col" onclick="event.stopPropagation();">
                         <span class="suggestion-badge ${badgeClass}" id="suggBadge-${i}" title="${escapeHtml(badgeTitle)}">${escapeHtml(badgeText)}</span>
                     </div>
-                    <div class="apply-col-wrap" onclick="event.stopPropagation();">
-                        <div class="apply-col">
-                            <select class="label-change-select" id="inboxApply-${i}">
-                                <option value="">Select...</option>
-                                ${labelOptions}
-                            </select>
-                            <button class="apply-btn" id="applyBtn-${i}" onclick="applyInboxLabel(${i})">Apply</button>
-                        </div>
+                    <div onclick="event.stopPropagation();">
+                        <select class="label-change-select" id="inboxApply-${i}" style="width:100%; max-width:110px;">
+                            <option value="">Select...</option>
+                            ${labelOptions}
+                        </select>
+                    </div>
+                    <div onclick="event.stopPropagation(); " style="text-align:center;">
+                        <button class="apply-btn" id="applyBtn-${i}" onclick="applyInboxLabel(${i})">Apply</button>
                     </div>
                     <div class="expand-icon">&#9662;</div>
                 </div>
