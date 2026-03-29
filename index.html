@@ -756,6 +756,41 @@
             }
 
             allEmails = threads.map(thread => parseThread(thread));
+
+            // Auto-remove follow-up label if someone has replied (latest message not from us)
+            if (currentLabel.toLowerCase().includes('follow')) {
+                const myEmails = sendAsAliases.map(a => a.sendAsEmail.toLowerCase());
+                const replied = [];
+                for (const email of allEmails) {
+                    const lastMsg = email.messages[email.messages.length - 1];
+                    const lastFrom = extractEmail(lastMsg.from).toLowerCase();
+                    if (lastFrom && !myEmails.some(me => lastFrom.includes(me))) {
+                        replied.push(email);
+                    }
+                }
+                if (replied.length > 0) {
+                    showSuccess(`Found ${replied.length} thread(s) with replies — moving back to inbox...`);
+                    for (const email of replied) {
+                        try {
+                            for (let m = 0; m < email.msgIds.length; m++) {
+                                if (m > 0) await new Promise(r => setTimeout(r, 300));
+                                await gapi.client.gmail.users.messages.modify({
+                                    userId: 'me',
+                                    id: email.msgIds[m],
+                                    resource: { removeLabelIds: [targetLabel.id] }
+                                });
+                            }
+                            await new Promise(r => setTimeout(r, 300));
+                        } catch (err) {
+                            console.error('Failed to auto-remove follow-up label:', err);
+                        }
+                    }
+                    // Remove them from the list
+                    const repliedIds = new Set(replied.map(e => e.threadId));
+                    allEmails = allEmails.filter(e => !repliedIds.has(e.threadId));
+                }
+            }
+
             allEmails.sort((a, b) => a.lastDate - b.lastDate);
             renderEmails(allEmails);
             updateStats(allEmails);
