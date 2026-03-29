@@ -218,6 +218,13 @@
         }
         .apply-btn:hover { background: #6366f1; color: white; }
         .apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .apply-all-btn {
+            padding: 3px 8px; font-size: 10px; font-weight: 600;
+            border: 1px solid #22c55e; background: #f0fdf4; color: #16a34a;
+            border-radius: 5px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+        }
+        .apply-all-btn:hover { background: #22c55e; color: white; }
+        .apply-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* Apply column layout */
         .suggestion-col { text-align: center; }
@@ -962,7 +969,7 @@
             <div>Subject / From</div>
             <div>Date</div>
             <div>AI Suggestion</div>
-            <div>Apply</div>
+            <div style="display:flex; align-items:center; gap:6px;">Apply <button class="apply-all-btn" onclick="applyAllInboxLabels()" id="applyAllBtn" title="Apply all selected labels at once">Apply All</button></div>
             <div></div>
         `;
     }
@@ -1078,6 +1085,112 @@
             console.error('Apply label error:', err);
             showError('Failed to apply label: ' + (err.result?.error?.message || err.message || 'Unknown error'));
             if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; }
+        }
+    }
+
+    async function applyAllInboxLabels() {
+        // Collect all rows that have a label selected
+        const toApply = [];
+        for (let i = 0; i < allEmails.length; i++) {
+            const selectEl = document.getElementById('inboxApply-' + i);
+            if (selectEl && selectEl.value) {
+                toApply.push({ index: i, labelName: selectEl.value });
+            }
+        }
+
+        if (toApply.length === 0) {
+            showError('No labels selected. Please select labels in the dropdowns first.');
+            return;
+        }
+
+        const applyAllBtn = document.getElementById('applyAllBtn');
+        if (applyAllBtn) { applyAllBtn.disabled = true; applyAllBtn.textContent = `Applying ${toApply.length}...`; }
+
+        let successCount = 0;
+        let failCount = 0;
+
+        // Process from highest index to lowest so splicing doesn't shift remaining indexes
+        for (let t = toApply.length - 1; t >= 0; t--) {
+            const { index, labelName } = toApply[t];
+            const email = allEmails[index];
+            if (!email) { failCount++; continue; }
+
+            const labelObj = allLabelsRaw.find(l => l.name === labelName);
+            if (!labelObj) { failCount++; continue; }
+
+            const applyBtn = document.getElementById('applyBtn-' + index);
+            if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '...'; }
+
+            try {
+                for (let m = 0; m < email.msgIds.length; m++) {
+                    if (m > 0) await new Promise(r => setTimeout(r, 300));
+                    await gapi.client.gmail.users.messages.modify({
+                        userId: 'me',
+                        id: email.msgIds[m],
+                        resource: { addLabelIds: [labelObj.id], removeLabelIds: ['INBOX'] }
+                    });
+                }
+
+                // Track corrections
+                const suggestion = inboxSuggestions[index];
+                if (suggestion && suggestion.label !== labelName) {
+                    storeCorrection(email, suggestion.label, labelName);
+                }
+
+                successCount++;
+                appliedTodayCount++;
+
+                // Remove suggestion and email
+                delete inboxSuggestions[index];
+                allEmails.splice(index, 1);
+
+            } catch (err) {
+                console.error('Apply all error for index ' + index + ':', err);
+                failCount++;
+                if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; }
+            }
+
+            // Small delay between emails
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        // Rebuild suggestion indexes to match remaining emails
+        // Before processing we saved threadId-keyed suggestions, now re-map by new index
+        const suggByThread = {};
+        for (const [key, sugg] of Object.entries(inboxSuggestions)) {
+            // We deleted applied ones already, so remaining entries are for remaining emails
+            // But indexes are now stale - rebuild by scanning allEmails
+        }
+        // Simpler: wipe and re-map using the pre-apply snapshot
+        // Since we processed highest-to-lowest, remaining suggestions still have valid keys
+        // for emails that weren't removed. Rebuild by matching allEmails order.
+        const newSuggestions = {};
+        allEmails.forEach((email, newI) => {
+            // Find a suggestion that matches this email's threadId
+            for (const [oldKey, sugg] of Object.entries(inboxSuggestions)) {
+                if (sugg && email.threadId && email.threadId === sugg._threadId) {
+                    newSuggestions[newI] = sugg;
+                    break;
+                }
+            }
+        });
+        inboxSuggestions = newSuggestions;
+
+        // Save applied today count
+        const todayKey = 'applied_today_' + new Date().toISOString().slice(0, 10);
+        localStorage.setItem(todayKey, appliedTodayCount.toString());
+
+        // Re-render
+        renderInboxEmails(allEmails);
+        const suggestedCount = Object.keys(inboxSuggestions).length;
+        updateInboxStats(allEmails.length, suggestedCount);
+
+        if (applyAllBtn) { applyAllBtn.disabled = false; applyAllBtn.textContent = 'Apply All'; }
+
+        if (failCount > 0) {
+            showError(`Applied ${successCount} labels. ${failCount} failed.`);
+        } else {
+            showSuccess(`Applied ${successCount} labels successfully.`);
         }
     }
 
@@ -1214,7 +1327,8 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
                         inboxSuggestions[idx] = {
                             label: suggestion.label,
                             confidence: suggestion.confidence || 'medium',
-                            reason: suggestion.reason || ''
+                            reason: suggestion.reason || '',
+                            _threadId: emails[idx].threadId
                         };
 
                         // Update badge
