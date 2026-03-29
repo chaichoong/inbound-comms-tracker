@@ -122,6 +122,25 @@
         .read-btn.already-read {
             border-color: #94a3b8; background: #f8fafc; color: #94a3b8; cursor: default;
         }
+        .email-list-header.delete-header {
+            grid-template-columns: 40px 1fr 160px 100px 120px 40px;
+        }
+        .email-row-summary.delete-row {
+            grid-template-columns: 40px 1fr 160px 100px 120px 40px;
+        }
+        .unsub-btn {
+            padding: 5px 10px; font-size: 11px; font-weight: 600;
+            border: 1px solid #ef4444; background: #fef2f2; color: #dc2626;
+            border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+        }
+        .unsub-btn:hover { background: #ef4444; color: white; }
+        .unsub-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .unsub-btn.already-unsub {
+            border-color: #94a3b8; background: #f8fafc; color: #94a3b8; cursor: default;
+        }
+        .unsub-btn.no-link {
+            border-color: #f59e0b; background: #fffbeb; color: #d97706;
+        }
         .email-row-summary:hover { background: #f8fafc; }
         .email-row.expanded .email-row-summary { background: #f1f5f9; }
         .row-number { font-size: 12px; color: #94a3b8; font-weight: 500; }
@@ -284,17 +303,54 @@
         /* Responsive */
         @media (max-width: 768px) {
             .email-list-header { display: none; }
-            .email-row-summary { grid-template-columns: 30px 1fr 60px 50px; gap: 4px; }
-            .email-row-summary.inbox-row { grid-template-columns: 30px 1fr 60px 50px; gap: 4px; }
-            .email-date, .action-col, .label-change-col, .suggestion-col, .apply-col-wrap { display: none; }
-            .days-old { font-size: 12px; }
+            .email-row-summary,
+            .email-row-summary.inbox-row,
+            .email-row-summary.topay-row,
+            .email-row-summary.archive-row,
+            .email-row-summary.newsletter-row,
+            .email-row-summary.delete-row {
+                grid-template-columns: 30px 1fr auto; gap: 4px; padding: 12px 12px;
+            }
+            .email-date, .action-col, .label-change-col, .suggestion-col, .apply-col-wrap, .expand-icon { display: none; }
+            .days-old { font-size: 12px; text-align: right; }
+            .email-subject { font-size: 13px; }
+            .email-from { font-size: 11px; }
             .email-body { padding: 0 12px 16px 12px; }
-            .stats-bar { gap: 8px; }
-            .stat-card { min-width: 100px; padding: 12px 14px; }
-            .stat-card .value { font-size: 22px; }
-            .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
-            .container { padding: 16px; }
-            .label-select { width: 160px; }
+            .email-meta { font-size: 12px; }
+
+            /* Stats */
+            .stats-bar { gap: 8px; flex-wrap: wrap; }
+            .stat-card { min-width: 80px; padding: 10px 12px; flex: 1 1 80px; }
+            .stat-card .label { font-size: 10px; }
+            .stat-card .value { font-size: 20px; }
+
+            /* Header */
+            .header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+            .header h1 { font-size: 16px; width: 100%; }
+            .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+            .label-select { width: 100%; max-width: none; }
+            .refresh-btn, .signout-btn, .settings-btn { padding: 6px 12px; font-size: 12px; }
+            .badge { font-size: 11px; padding: 3px 8px; }
+            .container { padding: 12px; }
+
+            /* Modal */
+            .modal-content { width: 95%; margin: 10px auto; max-height: 90vh; }
+            .modal-body { padding: 16px; }
+            .modal-footer { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+            .modal-footer button { flex: 1; min-width: 100px; font-size: 12px; }
+            #draftBody { min-height: 120px; }
+            #draftFeedback { min-height: 60px; }
+
+            /* Mobile action row shown below subject on tap */
+            .email-row.expanded .email-row-summary { padding-bottom: 8px; }
+            .email-row.expanded .mobile-actions {
+                display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap;
+                border-top: 1px solid #e2e8f0; background: #f8fafc;
+            }
+
+            /* Auth */
+            .auth-box { padding: 28px 20px; }
+            .auth-box h2 { font-size: 20px; }
         }
     </style>
 </head>
@@ -864,7 +920,7 @@
             }
 
             // Paid/Responded/Newsletter: newest first. Others: oldest first.
-            if (isArchiveView() || isNewsletterView()) {
+            if (isArchiveView() || isNewsletterView() || isDeleteView()) {
                 allEmails.sort((a, b) => b.lastDate - a.lastDate);
             } else {
                 allEmails.sort((a, b) => a.lastDate - b.lastDate);
@@ -1032,6 +1088,17 @@
 
         const msgIds = messages.map(m => m.id);
 
+        // Extract List-Unsubscribe header (check last message first, then first)
+        let unsubscribeHeader = getHeader(lastMsg, 'List-Unsubscribe') || getHeader(firstMsg, 'List-Unsubscribe');
+        let unsubscribeUrl = null;
+        let unsubscribeMailto = null;
+        if (unsubscribeHeader) {
+            const httpMatch = unsubscribeHeader.match(/<(https?:\/\/[^>]+)>/);
+            const mailtoMatch = unsubscribeHeader.match(/<(mailto:[^>]+)>/);
+            if (httpMatch) unsubscribeUrl = httpMatch[1];
+            if (mailtoMatch) unsubscribeMailto = mailtoMatch[1];
+        }
+
         return {
             threadId: thread.id,
             messageId: getHeader(lastMsg, 'Message-Id'),
@@ -1041,6 +1108,8 @@
             fromFull: from,
             fromEmail: extractEmail(from),
             replyTo,
+            unsubscribeUrl,
+            unsubscribeMailto,
             lastDate,
             firstDate,
             daysOld,
@@ -1067,6 +1136,132 @@
 
     function isNewsletterView() {
         return currentLabel.toLowerCase().includes('newsletter') || currentLabel.startsWith('6');
+    }
+
+    function isDeleteView() {
+        return currentLabel.toLowerCase().includes('delete') || currentLabel.startsWith('7');
+    }
+
+    // Unsubscribe tracking
+    function getUnsubscribeLog() {
+        try { return JSON.parse(localStorage.getItem('unsubscribe_log') || '[]'); } catch { return []; }
+    }
+
+    function logUnsubscribe(threadId, sender, method) {
+        const log = getUnsubscribeLog();
+        log.push({ threadId, sender, method, date: new Date().toISOString() });
+        localStorage.setItem('unsubscribe_log', JSON.stringify(log));
+    }
+
+    function isUnsubscribed(threadId) {
+        return getUnsubscribeLog().some(e => e.threadId === threadId);
+    }
+
+    async function unsubscribeEmail(index) {
+        const email = allEmails[index];
+        if (!email) return;
+
+        const btn = document.getElementById('unsub-' + index);
+        if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+        if (email.unsubscribeUrl) {
+            // Open the unsubscribe URL in a new tab
+            window.open(email.unsubscribeUrl, '_blank');
+            logUnsubscribe(email.threadId, email.fromEmail, 'link');
+            if (btn) { btn.textContent = 'Done'; btn.className = 'unsub-btn already-unsub'; }
+            updateStats(allEmails);
+            showSuccess('Unsubscribe page opened for ' + email.from);
+        } else if (email.unsubscribeMailto) {
+            // Send an unsubscribe email automatically
+            try {
+                const mailto = email.unsubscribeMailto.replace('mailto:', '');
+                const parts = mailto.split('?');
+                const toAddr = parts[0];
+                let subject = 'Unsubscribe';
+                let body = 'Unsubscribe';
+                if (parts[1]) {
+                    const params = new URLSearchParams(parts[1]);
+                    if (params.get('subject')) subject = params.get('subject');
+                    if (params.get('body')) body = params.get('body');
+                }
+
+                const rawMessage = `To: ${toAddr}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+                const encoded = btoa(unescape(encodeURIComponent(rawMessage)))
+                    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+                await gapi.client.gmail.users.messages.send({
+                    userId: 'me',
+                    resource: { raw: encoded }
+                });
+
+                logUnsubscribe(email.threadId, email.fromEmail, 'email');
+                if (btn) { btn.textContent = 'Done'; btn.className = 'unsub-btn already-unsub'; }
+                updateStats(allEmails);
+                showSuccess('Unsubscribe email sent to ' + toAddr);
+            } catch (err) {
+                console.error('Unsubscribe email error:', err);
+                showError('Failed to send unsubscribe email: ' + (err.message || 'Unknown error'));
+                if (btn) { btn.disabled = false; btn.textContent = 'Unsubscribe'; }
+            }
+        } else {
+            showError('No unsubscribe link found for this email. You may need to unsubscribe manually.');
+            if (btn) { btn.disabled = false; btn.textContent = 'Unsubscribe'; }
+        }
+    }
+
+    async function unsubscribeAll() {
+        const unsubBtn = document.getElementById('unsubAllBtn');
+        if (unsubBtn) { unsubBtn.disabled = true; unsubBtn.textContent = 'Working...'; }
+
+        let successCount = 0;
+        let failCount = 0;
+        let noLinkCount = 0;
+
+        for (let i = 0; i < allEmails.length; i++) {
+            const email = allEmails[i];
+            if (isUnsubscribed(email.threadId)) continue;
+            if (!email.unsubscribeUrl && !email.unsubscribeMailto) { noLinkCount++; continue; }
+
+            const btn = document.getElementById('unsub-' + i);
+
+            if (email.unsubscribeMailto) {
+                try {
+                    const mailto = email.unsubscribeMailto.replace('mailto:', '');
+                    const parts = mailto.split('?');
+                    const toAddr = parts[0];
+                    let subject = 'Unsubscribe';
+                    let body = 'Unsubscribe';
+                    if (parts[1]) {
+                        const params = new URLSearchParams(parts[1]);
+                        if (params.get('subject')) subject = params.get('subject');
+                        if (params.get('body')) body = params.get('body');
+                    }
+
+                    const rawMessage = `To: ${toAddr}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+                    const encoded = btoa(unescape(encodeURIComponent(rawMessage)))
+                        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+                    await gapi.client.gmail.users.messages.send({ userId: 'me', resource: { raw: encoded } });
+                    logUnsubscribe(email.threadId, email.fromEmail, 'email');
+                    if (btn) { btn.textContent = 'Done'; btn.className = 'unsub-btn already-unsub'; }
+                    successCount++;
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (err) {
+                    failCount++;
+                }
+            } else if (email.unsubscribeUrl) {
+                // Can't auto-click links in bulk — log as needing manual action
+                noLinkCount++;
+            }
+        }
+
+        updateStats(allEmails);
+        if (unsubBtn) { unsubBtn.disabled = false; unsubBtn.textContent = 'Unsub All'; }
+
+        let msg = `Unsubscribed from ${successCount} via email.`;
+        if (noLinkCount > 0) msg += ` ${noLinkCount} require manual unsubscribe (link only).`;
+        if (failCount > 0) msg += ` ${failCount} failed.`;
+        if (successCount > 0) showSuccess(msg); else showError(msg);
     }
 
     function getReadNewsletters() {
@@ -1148,7 +1343,17 @@
                 <div>Subject / From</div>
                 <div>Date</div>
                 <div>Days Old</div>
-                <div><button class="read-btn" onclick="markAllNewslettersRead()" title="Mark all as read">Read All</button></div>
+                <div style="text-align:center;"><button class="read-btn" onclick="markAllNewslettersRead()" title="Mark all as read">Read All</button></div>
+                <div></div>
+            `;
+        } else if (isDeleteView()) {
+            header.className = 'email-list-header delete-header';
+            header.innerHTML = `
+                <div>#</div>
+                <div>Subject / From</div>
+                <div>Date</div>
+                <div style="text-align:center;"><button class="unsub-btn" onclick="unsubscribeAll()" id="unsubAllBtn" title="Unsubscribe from all (email-based only)">Unsub All</button></div>
+                <div>Move Label</div>
                 <div></div>
             `;
         } else {
@@ -1856,6 +2061,46 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
                         ${email.messages.length > 1 ? renderThread(email.messages) : renderSingleMessage(email.messages[0])}
                     </div>
                 </div>`;
+            } else if (isDeleteView()) {
+                const alreadyUnsub = isUnsubscribed(email.threadId);
+                const hasUnsub = email.unsubscribeUrl || email.unsubscribeMailto;
+                const unsubMethod = email.unsubscribeMailto ? 'email' : (email.unsubscribeUrl ? 'link' : 'none');
+                let unsubBtnHtml;
+                if (alreadyUnsub) {
+                    unsubBtnHtml = '<button class="unsub-btn already-unsub" disabled>Done</button>';
+                } else if (hasUnsub) {
+                    unsubBtnHtml = `<button class="unsub-btn" id="unsub-${i}" onclick="event.stopPropagation(); unsubscribeEmail(${i})">Unsubscribe</button>`;
+                } else {
+                    unsubBtnHtml = '<button class="unsub-btn no-link" disabled title="No unsubscribe link found">No link</button>';
+                }
+                return `
+                <div class="email-row" id="row-${i}">
+                    <div class="email-row-summary delete-row" onclick="toggleRow(${i}); return false;">
+                        <div class="row-number">${i + 1}</div>
+                        <div class="email-subject-col">
+                            <div class="email-subject">${hasRealAttachments(email) ? '<span class="paperclip" title="Has attachments">&#128206;</span> ' : ''}${escapeHtml(email.subject)}</div>
+                            <div class="email-from">${escapeHtml(email.from)}${email.messageCount > 1 ? ' &middot; ' + email.messageCount + ' messages' : ''}</div>
+                        </div>
+                        <div class="email-date">${formatDate(email.lastDate)}</div>
+                        <div class="action-col" onclick="event.stopPropagation();">${unsubBtnHtml}</div>
+                        <div class="label-change-col" onclick="event.stopPropagation();">
+                            <select class="label-change-select" id="labelChg-${i}" onchange="changeLabel(${i}, this.value)">
+                                <option value="">Move to...</option>
+                                ${labelOptions}
+                            </select>
+                        </div>
+                        <div class="expand-icon">&#9662;</div>
+                    </div>
+                    <div class="email-body">
+                        <div class="email-meta">
+                            <div><strong>From:</strong> ${escapeHtml(email.fromFull)}</div>
+                            <div><strong>Date:</strong> ${formatDate(email.lastDate)}</div>
+                            <div><strong>Messages:</strong> ${email.messageCount}</div>
+                            <div><strong>Unsubscribe:</strong> ${email.unsubscribeMailto ? 'Email available' : (email.unsubscribeUrl ? 'Link available' : 'Not available')}</div>
+                        </div>
+                        ${email.messages.length > 1 ? renderThread(email.messages) : renderSingleMessage(email.messages[0])}
+                    </div>
+                </div>`;
             } else {
                 return `
                 <div class="email-row" id="row-${i}">
@@ -2001,6 +2246,23 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
 
     function updateStats(emails) {
         document.getElementById('statTotal').textContent = emails.length;
+
+        if (isDeleteView()) {
+            const unsubLog = getUnsubscribeLog();
+            const unsubCount = emails.filter(e => isUnsubscribed(e.threadId)).length;
+            const hasLink = emails.filter(e => e.unsubscribeUrl || e.unsubscribeMailto).length;
+            const last30 = unsubLog.filter(e => new Date(e.date) >= new Date(Date.now() - 30*24*60*60*1000)).length;
+            document.getElementById('statCriticalLabel').textContent = 'Pending';
+            document.getElementById('statWarningLabel').textContent = 'Unsubscribed';
+            document.getElementById('statRecentLabel').textContent = 'Unsubs (30 day)';
+            document.getElementById('statCritical').textContent = emails.length - unsubCount;
+            document.getElementById('statWarning').textContent = unsubCount;
+            document.getElementById('statRecent').textContent = last30;
+            document.getElementById('statCritical').className = 'value red';
+            document.getElementById('statWarning').className = 'value green';
+            document.getElementById('statRecent').className = 'value blue';
+            return;
+        }
 
         if (isNewsletterView()) {
             const readCount = emails.filter(e => isNewsletterRead(e.threadId)).length;
