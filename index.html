@@ -91,6 +91,9 @@
         .email-list-header.archive-header {
             grid-template-columns: 40px 1fr 160px 80px 120px 40px;
         }
+        .email-list-header.newsletter-header {
+            grid-template-columns: 40px 1fr 160px 80px 120px 40px;
+        }
         .email-row { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
         .email-row:last-child { border-bottom: none; }
         .email-row-summary {
@@ -105,6 +108,19 @@
         }
         .email-row-summary.archive-row {
             grid-template-columns: 40px 1fr 160px 80px 120px 40px;
+        }
+        .email-row-summary.newsletter-row {
+            grid-template-columns: 40px 1fr 160px 80px 120px 40px;
+        }
+        .email-row.newsletter-read .email-row-summary { opacity: 0.5; }
+        .read-btn {
+            padding: 5px 12px; font-size: 11px; font-weight: 600;
+            border: 1px solid #22c55e; background: #f0fdf4; color: #16a34a;
+            border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+        }
+        .read-btn:hover { background: #22c55e; color: white; }
+        .read-btn.already-read {
+            border-color: #94a3b8; background: #f8fafc; color: #94a3b8; cursor: default;
         }
         .email-row-summary:hover { background: #f8fafc; }
         .email-row.expanded .email-row-summary { background: #f1f5f9; }
@@ -847,8 +863,8 @@
                 }
             }
 
-            // Paid/Responded: newest first. Others: oldest first.
-            if (isArchiveView()) {
+            // Paid/Responded/Newsletter: newest first. Others: oldest first.
+            if (isArchiveView() || isNewsletterView()) {
                 allEmails.sort((a, b) => b.lastDate - a.lastDate);
             } else {
                 allEmails.sort((a, b) => a.lastDate - b.lastDate);
@@ -1049,6 +1065,37 @@
         return currentLabel.toLowerCase().includes('to respond') || currentLabel.startsWith('1');
     }
 
+    function isNewsletterView() {
+        return currentLabel.toLowerCase().includes('newsletter') || currentLabel.startsWith('6');
+    }
+
+    function getReadNewsletters() {
+        try { return JSON.parse(localStorage.getItem('read_newsletters') || '[]'); } catch { return []; }
+    }
+
+    function markNewsletterRead(threadId) {
+        const read = getReadNewsletters();
+        if (!read.includes(threadId)) {
+            read.push(threadId);
+            localStorage.setItem('read_newsletters', JSON.stringify(read));
+        }
+    }
+
+    function isNewsletterRead(threadId) {
+        return getReadNewsletters().includes(threadId);
+    }
+
+    function markAllNewslettersRead() {
+        const read = getReadNewsletters();
+        for (const email of allEmails) {
+            if (!read.includes(email.threadId)) read.push(email.threadId);
+        }
+        localStorage.setItem('read_newsletters', JSON.stringify(read));
+        renderEmails(allEmails);
+        updateStats(allEmails);
+        showSuccess('All newsletters marked as read.');
+    }
+
     function isPaidView() {
         return currentLabel.toLowerCase().includes('paid') || currentLabel.startsWith('4');
     }
@@ -1092,6 +1139,16 @@
                 <div>Last Activity</div>
                 <div>Days Old</div>
                 <div>Move Label</div>
+                <div></div>
+            `;
+        } else if (isNewsletterView()) {
+            header.className = 'email-list-header newsletter-header';
+            header.innerHTML = `
+                <div>#</div>
+                <div>Subject / From</div>
+                <div>Date</div>
+                <div>Days Old</div>
+                <div><button class="read-btn" onclick="markAllNewslettersRead()" title="Mark all as read">Read All</button></div>
                 <div></div>
             `;
         } else {
@@ -1771,6 +1828,34 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
                         ${email.messages.length > 1 ? renderThread(email.messages) : renderSingleMessage(email.messages[0])}
                     </div>
                 </div>`;
+            } else if (isNewsletterView()) {
+                const isRead = isNewsletterRead(email.threadId);
+                return `
+                <div class="email-row ${isRead ? 'newsletter-read' : ''}" id="row-${i}">
+                    <div class="email-row-summary newsletter-row" onclick="toggleRow(${i}); return false;">
+                        <div class="row-number">${i + 1}</div>
+                        <div class="email-subject-col">
+                            <div class="email-subject">${hasRealAttachments(email) ? '<span class="paperclip" title="Has attachments">&#128206;</span> ' : ''}${escapeHtml(email.subject)}</div>
+                            <div class="email-from">${escapeHtml(email.from)}${email.messageCount > 1 ? ' &middot; ' + email.messageCount + ' messages' : ''}</div>
+                        </div>
+                        <div class="email-date">${formatDate(email.lastDate)}</div>
+                        <div class="days-old ${getDaysClass(email.daysOld)}" id="days-${i}">${email.daysOld}d</div>
+                        <div class="action-col" onclick="event.stopPropagation();">
+                            ${isRead
+                                ? '<button class="read-btn already-read" disabled>Read</button>'
+                                : `<button class="read-btn" onclick="markNewsletterRead('${email.threadId}'); this.textContent='Read'; this.className='read-btn already-read'; this.disabled=true; document.getElementById('row-${i}').classList.add('newsletter-read'); updateStats(allEmails);">Read</button>`}
+                        </div>
+                        <div class="expand-icon">&#9662;</div>
+                    </div>
+                    <div class="email-body">
+                        <div class="email-meta">
+                            <div><strong>From:</strong> ${escapeHtml(email.fromFull)}</div>
+                            <div><strong>Date:</strong> ${formatDate(email.lastDate)}</div>
+                            <div><strong>Messages:</strong> ${email.messageCount}</div>
+                        </div>
+                        ${email.messages.length > 1 ? renderThread(email.messages) : renderSingleMessage(email.messages[0])}
+                    </div>
+                </div>`;
             } else {
                 return `
                 <div class="email-row" id="row-${i}">
@@ -1916,6 +2001,27 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
 
     function updateStats(emails) {
         document.getElementById('statTotal').textContent = emails.length;
+
+        if (isNewsletterView()) {
+            const readCount = emails.filter(e => isNewsletterRead(e.threadId)).length;
+            const unreadCount = emails.length - readCount;
+            document.getElementById('statCriticalLabel').textContent = 'Unread';
+            document.getElementById('statWarningLabel').textContent = 'Read';
+            document.getElementById('statRecentLabel').textContent = 'Total';
+            document.getElementById('statCritical').textContent = unreadCount;
+            document.getElementById('statWarning').textContent = readCount;
+            document.getElementById('statRecent').textContent = emails.length;
+            // Recolour for newsletter context
+            document.getElementById('statCritical').className = 'value red';
+            document.getElementById('statWarning').className = 'value green';
+            document.getElementById('statRecent').className = 'value blue';
+            return;
+        }
+
+        // Reset colours for non-newsletter views
+        document.getElementById('statCritical').className = 'value red';
+        document.getElementById('statWarning').className = 'value amber';
+        document.getElementById('statRecent').className = 'value green';
 
         if (isArchiveView()) {
             document.getElementById('statCriticalLabel').textContent = 'Long Term (90+ days)';
