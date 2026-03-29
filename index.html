@@ -873,14 +873,14 @@
             let pageToken = null;
             let fetched = 0;
             do {
-                const params = { userId: 'me', labelIds: ['INBOX'], maxResults: 100 };
+                const params = { userId: 'me', labelIds: ['INBOX'], maxResults: 500 };
                 if (pageToken) params.pageToken = pageToken;
                 const listResp = await gapi.client.gmail.users.messages.list(params);
                 const msgs = listResp.result.messages || [];
                 inboxMessages = inboxMessages.concat(msgs);
                 pageToken = listResp.result.nextPageToken;
                 fetched += msgs.length;
-            } while (pageToken && fetched < 200); // fetch up to 200, we'll filter down
+            } while (pageToken); // fetch all inbox messages
 
             if (inboxMessages.length === 0) {
                 document.getElementById('emailListBody').innerHTML = '<div class="empty-state"><p>No emails found in inbox.</p></div>';
@@ -890,7 +890,7 @@
 
             // Fetch message metadata to check labels - batch by 20
             const filteredMessages = [];
-            for (let i = 0; i < inboxMessages.length && filteredMessages.length < 50; i += 20) {
+            for (let i = 0; i < inboxMessages.length; i += 20) {
                 const batch = inboxMessages.slice(i, Math.min(i + 20, inboxMessages.length));
                 const details = await Promise.all(
                     batch.map(m =>
@@ -907,7 +907,6 @@
                     const hasNumberedLabel = msgLabelIds.some(lid => numberedLabelIds.has(lid));
                     if (!hasNumberedLabel) {
                         filteredMessages.push(msg);
-                        if (filteredMessages.length >= 50) break;
                     }
                 }
             }
