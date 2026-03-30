@@ -388,6 +388,11 @@
             .auth-box p { font-size: 13px; }
             .google-btn { font-size: 13px; padding: 10px 20px; }
 
+            /* Attachments in modal */
+            .attachment-add-btn { font-size: 11px; padding: 6px 10px; }
+            .attachment-chip { font-size: 11px; padding: 4px 8px; }
+            .attachment-list-preview { gap: 6px; }
+
             /* Settings modal */
             .settings-info { font-size: 11px; }
             .kb-btn { font-size: 12px; padding: 6px 12px; }
@@ -430,6 +435,30 @@
             display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 6px;
             border-radius: 4px; background: #ede9fe; color: #6366f1; margin-left: 8px; vertical-align: middle;
         }
+        /* Attachment UI in Draft Modal */
+        .attachment-add-row {
+            display: flex; align-items: center; gap: 8px; margin-top: 4px;
+        }
+        .attachment-add-btn {
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+            border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+            border: 1px dashed #cbd5e1; background: #f8fafc; color: #475569; transition: all 0.15s;
+        }
+        .attachment-add-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+        .attachment-list-preview {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+        }
+        .attachment-chip {
+            display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+            background: #ede9fe; color: #6366f1; border-radius: 6px; font-size: 12px; font-weight: 500;
+        }
+        .attachment-chip .att-size { color: #94a3b8; font-weight: 400; }
+        .attachment-chip .att-remove {
+            background: none; border: none; color: #a78bfa; font-size: 15px; cursor: pointer;
+            padding: 0 2px; line-height: 1;
+        }
+        .attachment-chip .att-remove:hover { color: #ef4444; }
+
         .email-list-header.global-header {
             grid-template-columns: 40px 1fr 140px 100px 80px 40px;
         }
@@ -640,6 +669,15 @@
                     <label>Your Response</label>
                     <textarea id="draftBody"></textarea>
                 </div>
+                <div class="modal-field">
+                    <label>Attachments</label>
+                    <div class="attachment-add-row">
+                        <button type="button" class="attachment-add-btn" onclick="document.getElementById('attachmentInput').click();">&#128206; Add Attachment</button>
+                        <input type="file" id="attachmentInput" multiple style="display:none;" onchange="handleAttachmentSelect(event)" />
+                        <span id="attachmentSizeInfo" style="font-size:11px; color:#94a3b8;"></span>
+                    </div>
+                    <div class="attachment-list-preview" id="attachmentListPreview"></div>
+                </div>
                 <div class="modal-field" id="feedbackField">
                     <label>Feedback / Amendments</label>
                     <div style="display:flex; gap:8px; align-items:flex-start;">
@@ -753,6 +791,7 @@
     let sendAsAliases = [];     // send-as email addresses
     let currentDraftEmail = null;
     let currentDraftIndex = null;
+    let pendingAttachments = []; // {name, type, size, data (base64)}
     let isInboxView = true;
     let inboxSuggestions = {};  // index -> { label, confidence, reason }
     let appliedTodayCount = 0;
@@ -2895,12 +2934,16 @@ Example: [{"index": 0, "label": "3. to pay", "confidence": "high", "reason": "In
         const email = allEmails[index];
         currentDraftEmail = email;
         currentDraftIndex = index;
+        pendingAttachments = [];
 
         document.getElementById('draftModal').classList.add('active');
         document.getElementById('draftingStatus').style.display = 'block';
         document.getElementById('draftForm').style.display = 'none';
         document.getElementById('sendRespondedBtn').disabled = true;
         document.getElementById('sendFollowUpBtn').disabled = true;
+        document.getElementById('attachmentListPreview').innerHTML = '';
+        document.getElementById('attachmentSizeInfo').textContent = '';
+        document.getElementById('attachmentInput').value = '';
         document.getElementById('draftFeedback').value = '';
         document.getElementById('reviseStatus').textContent = '';
         document.getElementById('draftModalTitle').textContent = 'Unsubscribe Request: ' + email.subject;
@@ -2970,6 +3013,7 @@ Sign off as ${senderName}.`;
         const email = allEmails[index];
         currentDraftEmail = email;
         currentDraftIndex = index;
+        pendingAttachments = [];
 
         document.getElementById('draftModal').classList.add('active');
         document.getElementById('draftingStatus').style.display = 'block';
@@ -2978,6 +3022,9 @@ Sign off as ${senderName}.`;
         document.getElementById('sendFollowUpBtn').disabled = true;
         document.getElementById('draftFeedback').value = '';
         document.getElementById('reviseStatus').textContent = '';
+        document.getElementById('attachmentListPreview').innerHTML = '';
+        document.getElementById('attachmentSizeInfo').textContent = '';
+        document.getElementById('attachmentInput').value = '';
         const isToPayDraft = currentLabel.toLowerCase().includes('to pay') || currentLabel.startsWith('3');
         document.getElementById('draftModalTitle').textContent = (isToPayDraft ? 'Delay Payment: ' : 'Draft Response: ') + email.subject;
 
@@ -3100,6 +3147,72 @@ Do not include a subject line - just the body text. Sign off as ${senderName}.`;
         document.getElementById('draftModal').classList.remove('active');
         currentDraftEmail = null;
         currentDraftIndex = null;
+        pendingAttachments = [];
+        document.getElementById('attachmentListPreview').innerHTML = '';
+        document.getElementById('attachmentSizeInfo').textContent = '';
+        document.getElementById('attachmentInput').value = '';
+    }
+
+    // ============================================================
+    // ATTACHMENT HANDLING
+    // ============================================================
+    function handleAttachmentSelect(event) {
+        const files = Array.from(event.target.files);
+        if (!files.length) return;
+
+        const MAX_TOTAL = 20 * 1024 * 1024; // 20MB Gmail limit
+        let currentTotal = pendingAttachments.reduce((sum, a) => sum + a.size, 0);
+
+        for (const file of files) {
+            if (currentTotal + file.size > MAX_TOTAL) {
+                showError('Total attachments cannot exceed 20MB (Gmail limit). "' + file.name + '" was not added.');
+                break;
+            }
+            // Read file as base64
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64 = e.target.result.split(',')[1]; // strip data:...;base64, prefix
+                pendingAttachments.push({
+                    name: file.name,
+                    type: file.type || 'application/octet-stream',
+                    size: file.size,
+                    data: base64
+                });
+                renderAttachmentChips();
+            };
+            reader.readAsDataURL(file);
+            currentTotal += file.size;
+        }
+        // Reset input so same file can be re-added if removed
+        event.target.value = '';
+    }
+
+    function removeAttachment(index) {
+        pendingAttachments.splice(index, 1);
+        renderAttachmentChips();
+    }
+
+    function renderAttachmentChips() {
+        const container = document.getElementById('attachmentListPreview');
+        const sizeInfo = document.getElementById('attachmentSizeInfo');
+        if (pendingAttachments.length === 0) {
+            container.innerHTML = '';
+            sizeInfo.textContent = '';
+            return;
+        }
+        container.innerHTML = pendingAttachments.map((att, idx) => {
+            const sizeStr = att.size < 1024 ? att.size + ' B'
+                : att.size < 1048576 ? (att.size / 1024).toFixed(1) + ' KB'
+                : (att.size / 1048576).toFixed(1) + ' MB';
+            return `<div class="attachment-chip">
+                <span>&#128206; ${escapeHtml(att.name)}</span>
+                <span class="att-size">(${sizeStr})</span>
+                <button class="att-remove" onclick="removeAttachment(${idx})" title="Remove">&times;</button>
+            </div>`;
+        }).join('');
+        const totalSize = pendingAttachments.reduce((s, a) => s + a.size, 0);
+        const totalStr = totalSize < 1048576 ? (totalSize / 1024).toFixed(1) + ' KB' : (totalSize / 1048576).toFixed(1) + ' MB';
+        sizeInfo.textContent = pendingAttachments.length + ' file' + (pendingAttachments.length > 1 ? 's' : '') + ' (' + totalStr + ' / 20 MB max)';
     }
 
     // ============================================================
@@ -3181,7 +3294,7 @@ Do not include a subject line - just the body text. Sign off as ${senderName}.`;
         const headers = [
             `To: ${to}`,
             `Subject: ${subject}`,
-            `Content-Type: text/plain; charset=utf-8`
+            'MIME-Version: 1.0'
         ];
 
         // Add From header if using an alias
@@ -3198,9 +3311,43 @@ Do not include a subject line - just the body text. Sign off as ${senderName}.`;
             headers.push(`References: ${currentDraftEmail.messageId}`);
         }
 
-        const rawMessage = headers.join('\r\n') + '\r\n\r\n' + body;
-        const encoded = btoa(unescape(encodeURIComponent(rawMessage)))
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        let encoded;
+        if (pendingAttachments.length > 0) {
+            // Build MIME multipart/mixed message
+            const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+            let mimeBody = headers.join('\r\n') + '\r\n\r\n';
+            // Text body part
+            mimeBody += `--${boundary}\r\n`;
+            mimeBody += 'Content-Type: text/plain; charset=utf-8\r\n';
+            mimeBody += 'Content-Transfer-Encoding: base64\r\n\r\n';
+            mimeBody += btoa(unescape(encodeURIComponent(body))) + '\r\n';
+
+            // Attachment parts
+            for (const att of pendingAttachments) {
+                mimeBody += `--${boundary}\r\n`;
+                mimeBody += `Content-Type: ${att.type}; name="${att.name.replace(/"/g, '\\"')}"\r\n`;
+                mimeBody += 'Content-Transfer-Encoding: base64\r\n';
+                mimeBody += `Content-Disposition: attachment; filename="${att.name.replace(/"/g, '\\"')}"\r\n\r\n`;
+                // Split base64 into 76-char lines per RFC 2045
+                const b64 = att.data;
+                for (let j = 0; j < b64.length; j += 76) {
+                    mimeBody += b64.substring(j, j + 76) + '\r\n';
+                }
+            }
+            mimeBody += `--${boundary}--\r\n`;
+
+            // For multipart with binary data, encode using ASCII-safe method
+            // The MIME body is pure ASCII (headers + base64 content), so btoa is safe
+            encoded = btoa(mimeBody).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        } else {
+            // Simple plain text message (no attachments)
+            headers.push('Content-Type: text/plain; charset=utf-8');
+            const rawMessage = headers.join('\r\n') + '\r\n\r\n' + body;
+            encoded = btoa(unescape(encodeURIComponent(rawMessage)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
 
         try {
             const sendParams = { userId: 'me', resource: { raw: encoded } };
@@ -3243,9 +3390,11 @@ Do not include a subject line - just the body text. Sign off as ${senderName}.`;
                 allEmails.splice(currentDraftIndex, 1);
             }
 
+            const attCount = pendingAttachments.length;
             closeDraftModal();
-            showSuccess('Sent from ' + (fromEmail || 'primary account') + ' to ' + to + ' — moved to "' + destLabelName + '"');
-            addAuditEntry('email_sent', `Sent to ${to}: "${truncate(subject, 40)}" from ${currentLabel}`);
+            const attNote = attCount > 0 ? ` with ${attCount} attachment${attCount > 1 ? 's' : ''}` : '';
+            showSuccess('Sent from ' + (fromEmail || 'primary account') + ' to ' + to + attNote + ' — moved to "' + destLabelName + '"');
+            addAuditEntry('email_sent', `Sent to ${to}: "${truncate(subject, 40)}"${attNote} from ${currentLabel}`);
             triggerAutoBackup();
 
             if (isInboxView) {
